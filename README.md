@@ -1,25 +1,96 @@
-# daily-intelligence-report
-Our goal here is to build an feed ingest and document processing pipeline that will produce a short summary of yesterday's events/news for our daily consumption. 
+# Daily Intelligence Report
 
-## 1  Problem Analysis
+A personalized daily intelligence report system that collects information from various sources, processes it, and delivers a concise summary.
 
-| Requirement | Design implications |
-|-------------|--------------------|
-| Pull **heterogeneous real-time feeds** (RSS, X/Twitter, IMAP, audio/video transcripts) | Five independent collectors with retry/back-off, plus a thin normalization layer so every item becomes a common “Post” object. |
-| Run **locally on a MacBook Air _or_ a small cloud VM** | Lightweight footprint: SQLite + FTS5, cron/ruffus scheduler, on-device embeddings. |
-| Produce a **3-10 page daily brief** | Pipeline must deduplicate, cluster, summarise, and render to PDF/Markdown. |
-| Respect **API limits / costs** | Use X **Basic** tier (10 k reads/mo) or Nitter scraping fallback; configurable rate caps. |
-| Keep **private data local** | Optional offline LLM via Ollama; secrets stored in macOS Keychain or env-vars. |
+## Project Description
 
----
+This system is designed to:
 
-## 2  Proposed Solution Overview
+1. **Ingest** content from multiple sources:
+   - RSS feeds
+   - X/Twitter
+   - Email newsletters
+   - Podcast transcripts
+   - YouTube videos
 
-The system is a modular Python pipeline scheduled daily (via `cron` or `systemd`) that
+2. **Process** the content:
+   - Normalize to a common format
+   - Store in SQLite with full-text search
+   - Generate embeddings
+   - Cluster by topic
+   - Summarize each cluster
 
-1. **Ingests** items from RSS, X/Twitter API, and IMAP newsletters, podcast and youtube transcripts.  
-2. **Normalises** them into a common `Post` schema and persists to SQLite + FTS5.  
-3. **Embeds & clusters** the last 24 h of posts (MiniLM → k-means).  
-4. **Summarises** each cluster with an on-device LLM (default: Ollama `llama3:8b`).  
-5. **Renders** a Markdown template to `YYYY-MM-DD.pdf`.  
-6. **Delivers** the brief to `~/DailyBriefs/` and optionally emails it.
+3. **Deliver** a daily brief:
+   - Generate a PDF report
+   - Save locally and/or email
+
+## Development Setup
+
+### Prerequisites
+
+- Python 3.11+
+- Poetry (for dependency management)
+
+### Installation
+
+1. Clone the repository:
+   ```bash
+   git clone https://github.com/yourusername/daily-intelligence-report.git
+   cd daily-intelligence-report
+   ```
+
+2. Run the setup script:
+   ```bash
+   ./setup.sh
+   ```
+   
+   This script will:
+   - Install Poetry (if needed)
+   - Set up the pyproject.toml (if needed)
+   - Install all dependencies
+   - Create the project structure
+   - Configure Poetry to create virtual environment in the project directory
+
+3. Activate the virtual environment:
+   ```bash
+   poetry shell
+   ```
+
+### Development Commands
+
+- Run tests:
+  ```bash
+  poetry run pytest
+  ```
+
+- Code formatting:
+  ```bash
+  poetry run black src tests
+  ```
+
+- Linting:
+  ```bash
+  poetry run ruff src tests
+  ```
+
+- Type checking:
+  ```bash
+  poetry run mypy src
+  ```
+
+## Project Structure
+
+```
+daily‑intel/
+├── README.md
+├── pyproject.toml
+├── config.yaml            # secrets via env vars / macOS keychain
+├── cronjob.sh             # `$ python -m pipeline.daily_report`
+├── src/
+│   ├── connectors/        # RSS, X API, Email, Podcast, YouTube
+│   ├── models/            # Embedding, clustering, summarization
+│   ├── pipeline/          # Pipeline orchestration
+│   ├── render/            # Report rendering
+│   └── api/               # Optional FastAPI service
+└── tests/
+```
