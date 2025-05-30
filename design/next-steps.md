@@ -2,6 +2,7 @@ This is a document that provides details on implementing the next steps in our d
 
 
 1. Initialize SQLite database schema
+
 | Sub-task | Purpose & Notes | Rough Deliverable |
 | --- | --- | --- |
 | **Decide file location & naming** | Keep the DB file in `./data/dev/intel.db` for local dev; allow overrides via **config.yaml** (e.g., `~/intel/intel.db`). | Path entry in `config.yaml`: `storage.sqlite_path` |
@@ -12,6 +13,7 @@ This is a document that provides details on implementing the next steps in our d
 | **Plan for migrations** | Choose lightweight strategy (`sqlite-migrate` or `infra/migrations/NNN_*.sql`) and document it. | `docs/migrations.md` |
 
 2. Configure logging
+
 | Sub-task | Purpose & Notes | Rough Deliverable |
 | --- | --- | --- |
 | **Choose logging backend** | Use std‑lib `logging`; add **rich** for pretty console output. Rotate files via `RotatingFileHandler`. | `pyproject.toml` dependency: `rich` |
