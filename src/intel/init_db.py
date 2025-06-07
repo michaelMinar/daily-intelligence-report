@@ -9,9 +9,14 @@ from typing import Optional
 
 try:
     from importlib.resources import files
+    from importlib.metadata import distribution
 except ImportError:
     # Python < 3.9 fallback
     from importlib_resources import files
+    try:
+        from importlib_metadata import distribution
+    except ImportError:
+        distribution = None
 
 from .utils.log import get_logger
 
@@ -23,12 +28,45 @@ def get_schema_path() -> Path:
     """Get schema file path for both development and installed packages."""
     # Try to use importlib.resources for installed packages
     try:
-        # Get the package name dynamically from current module
-        current_module = __name__.split('.')[0]  # Gets 'intel' from 'intel.init_db'
+        # Get package names using more reliable methods
+        package_names = []
         
-        # Try different possible package names
-        package_names = [current_module, 'daily_intelligence_report', 'src']
+        # Method 1: Use __package__ if available and not running as __main__
+        if __package__ and __package__ != '__main__':
+            # Get top-level package from __package__
+            top_package = __package__.split('.')[0]
+            package_names.append(top_package)
         
+        # Method 2: Try to get package name from distribution metadata
+        if distribution is not None:
+            try:
+                # Common package names to try
+                dist_names = ['daily-intelligence-report', 'intel']
+                for dist_name in dist_names:
+                    try:
+                        dist = distribution(dist_name)
+                        # Use the distribution name or top-level packages
+                        package_names.append(dist.metadata['Name'].replace('-', '_'))
+                        if hasattr(dist, 'files') and dist.files:
+                            # Get actual package names from installed files
+                            for file in dist.files:
+                                if file.suffix == '.py' and '/' in str(file):
+                                    pkg_name = str(file).split('/')[0]
+                                    if pkg_name not in package_names:
+                                        package_names.append(pkg_name)
+                                    break
+                    except Exception:
+                        continue
+            except Exception:
+                pass
+        
+        # Method 3: Fallback to common names
+        fallback_names = ['intel', 'daily_intelligence_report', 'src']
+        for name in fallback_names:
+            if name not in package_names:
+                package_names.append(name)
+        
+        # Try each package name
         for package_name in package_names:
             try:
                 schema_files = files(package_name).joinpath('infra')
