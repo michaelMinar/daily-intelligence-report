@@ -4,7 +4,7 @@ import hashlib
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field, model_validator
 
 
 class Post(BaseModel):
@@ -33,22 +33,23 @@ class Post(BaseModel):
     )
     
     @computed_field
-    @property
     def computed_content_hash(self) -> str:
         """Compute SHA-256 hash of title + content for deduplication."""
         content_to_hash = f"{self.title}\n{self.content}"
         return hashlib.sha256(content_to_hash.encode("utf-8")).hexdigest()
     
-    def model_post_init(self, __context: Any) -> None:
+    @model_validator(mode='after')
+    def set_content_hash(self) -> 'Post':
         """Set content_hash after model initialization if not provided."""
         if self.content_hash is None:
             self.content_hash = self.computed_content_hash
+        return self
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat() if v else None
         }
+    )
         
     def __str__(self) -> str:
         """String representation."""
@@ -56,4 +57,7 @@ class Post(BaseModel):
     
     def __repr__(self) -> str:
         """Developer representation."""
-        return f"Post(id={self.id}, source_id={self.source_id}, title='{self.title[:50]}...')"
+        return (
+            f"Post(id={self.id}, source_id={self.source_id}, "
+            f"title='{self.title[:50]}...')"
+        )

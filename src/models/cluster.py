@@ -1,10 +1,10 @@
 """Cluster model for topic clustering of posts."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Cluster(BaseModel):
@@ -23,8 +23,16 @@ class Cluster(BaseModel):
         description="Serialized cluster centroid as bytes"
     )
     
-    # Transient field for working with centroid as numpy array
-    _centroid_vector: Optional[np.ndarray] = None
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            datetime: lambda v: v.isoformat() if v else None,
+            bytes: lambda v: v.hex() if v else None,
+        }
+    )
+    
+    # Transient field for working with centroid as numpy array (not serialized)
+    centroid_vector_cache: Optional[np.ndarray] = Field(default=None, exclude=True)
     
     @field_validator('label')
     @classmethod
@@ -37,8 +45,8 @@ class Cluster(BaseModel):
     @property
     def centroid_vector(self) -> Optional[np.ndarray]:
         """Get centroid as numpy array."""
-        if self._centroid_vector is not None:
-            return self._centroid_vector
+        if self.centroid_vector_cache is not None:
+            return self.centroid_vector_cache
         
         if self.centroid_blob is not None:
             return np.frombuffer(self.centroid_blob, dtype=np.float32)
@@ -55,7 +63,7 @@ class Cluster(BaseModel):
         if vector.dtype != np.float32:
             vector = vector.astype(np.float32)
         
-        self._centroid_vector = vector
+        self.centroid_vector_cache = vector
         self.centroid_blob = vector.tobytes()
     
     def distance_to_centroid(self, embedding_vector: np.ndarray) -> float:
@@ -90,13 +98,6 @@ class Cluster(BaseModel):
         
         return float(dot_product / (norm1 * norm2))
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            bytes: lambda v: v.hex() if v else None,
-        }
-        arbitrary_types_allowed = True
         
     def __str__(self) -> str:
         """String representation."""
@@ -104,4 +105,7 @@ class Cluster(BaseModel):
     
     def __repr__(self) -> str:
         """Developer representation."""
-        return f"Cluster(id={self.id}, label='{self.label}', post_count={self.post_count})"
+        return (
+            f"Cluster(id={self.id}, label='{self.label}', "
+            f"post_count={self.post_count})"
+        )

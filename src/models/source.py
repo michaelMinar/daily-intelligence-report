@@ -4,7 +4,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from pydantic import BaseModel, Field, HttpUrl
+from pydantic import BaseModel, ConfigDict, Field
 
 
 class SourceType(str, Enum):
@@ -31,11 +31,11 @@ class Source(BaseModel):
     updated_at: Optional[datetime] = None
     active: bool = Field(default=True, description="Whether the source is active")
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
+    model_config = ConfigDict(
+        json_encoders={
             datetime: lambda v: v.isoformat() if v else None
         }
+    )
         
     def __str__(self) -> str:
         """String representation."""

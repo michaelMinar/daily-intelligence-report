@@ -1,10 +1,10 @@
 """Embedding model for vector representations of posts."""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Optional
 
 import numpy as np
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 
 class Embedding(BaseModel):
@@ -22,8 +22,16 @@ class Embedding(BaseModel):
     )
     created_at: Optional[datetime] = None
     
-    # Transient field for working with embeddings as numpy arrays
-    _embedding_vector: Optional[np.ndarray] = None
+    model_config = ConfigDict(
+        arbitrary_types_allowed=True,
+        json_encoders={
+            datetime: lambda v: v.isoformat() if v else None,
+            bytes: lambda v: v.hex() if v else None,
+        }
+    )
+    
+    # Transient field for working with embeddings as numpy arrays (not serialized)
+    embedding_vector_cache: Optional[np.ndarray] = Field(default=None, exclude=True)
     
     @field_validator('model_name')
     @classmethod
@@ -36,8 +44,8 @@ class Embedding(BaseModel):
     @property
     def embedding_vector(self) -> Optional[np.ndarray]:
         """Get embedding as numpy array."""
-        if self._embedding_vector is not None:
-            return self._embedding_vector
+        if self.embedding_vector_cache is not None:
+            return self.embedding_vector_cache
         
         if self.embedding_blob is not None:
             return np.frombuffer(self.embedding_blob, dtype=np.float32)
@@ -54,7 +62,7 @@ class Embedding(BaseModel):
         if vector.dtype != np.float32:
             vector = vector.astype(np.float32)
         
-        self._embedding_vector = vector
+        self.embedding_vector_cache = vector
         self.embedding_blob = vector.tobytes()
     
     def similarity(self, other: "Embedding") -> float:
@@ -63,7 +71,9 @@ class Embedding(BaseModel):
         vec2 = other.embedding_vector
         
         if vec1 is None or vec2 is None:
-            raise ValueError("Both embeddings must have vectors to calculate similarity")
+            raise ValueError(
+                "Both embeddings must have vectors to calculate similarity"
+            )
         
         if vec1.shape != vec2.shape:
             raise ValueError("Embedding vectors must have the same shape")
@@ -78,19 +88,21 @@ class Embedding(BaseModel):
         
         return float(dot_product / (norm1 * norm2))
     
-    class Config:
-        """Pydantic configuration."""
-        json_encoders = {
-            datetime: lambda v: v.isoformat() if v else None,
-            bytes: lambda v: v.hex() if v else None,
-        }
-        arbitrary_types_allowed = True
-        
     def __str__(self) -> str:
         """String representation."""
-        vector_info = f"shape={self.embedding_vector.shape}" if self.embedding_vector is not None else "no vector"
-        return f"Embedding(post_id={self.post_id}, model={self.model_name}, {vector_info})"
+        vector_info = (
+            f"shape={self.embedding_vector.shape}"
+            if self.embedding_vector is not None
+            else "no vector"
+        )
+        return (
+            f"Embedding(post_id={self.post_id}, "
+            f"model={self.model_name}, {vector_info})"
+        )
     
     def __repr__(self) -> str:
         """Developer representation."""
-        return f"Embedding(id={self.id}, post_id={self.post_id}, model_name='{self.model_name}')"
+        return (
+            f"Embedding(id={self.id}, post_id={self.post_id}, "
+            f"model_name='{self.model_name}')"
+        )

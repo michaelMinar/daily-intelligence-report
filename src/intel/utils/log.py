@@ -1,7 +1,7 @@
 """Logging utilities for structured logging."""
 
 import logging
-from typing import Any, Dict, Optional
+from typing import Any
 
 
 def get_logger(name: str) -> logging.Logger:

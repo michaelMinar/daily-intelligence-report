@@ -4,6 +4,7 @@ This package provides the core functionality for the daily intelligence report s
 """
 
 import logging.config
+
 from .logging_config import LOGGING_CONFIG
 
 # Bootstrap logging configuration on import

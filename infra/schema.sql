@@ -1,8 +1,7 @@
 -- Daily Intelligence Report Database Schema
 -- SQLite with FTS5 for full-text search capabilities
 
--- Schema version for migration tracking
-PRAGMA user_version = 1;
+-- Note: Schema version should be set by migration logic, not in DDL
 
 -- Enable foreign key constraints
 PRAGMA foreign_keys = ON;
@@ -89,10 +88,7 @@ CREATE TRIGGER IF NOT EXISTS posts_fts_update AFTER UPDATE ON posts BEGIN
     INSERT INTO posts_fts(rowid, title, content) VALUES (new.id, new.title, new.content);
 END;
 
--- Trigger to update sources.updated_at
-CREATE TRIGGER IF NOT EXISTS sources_updated_at AFTER UPDATE ON sources BEGIN
-    UPDATE sources SET updated_at = CURRENT_TIMESTAMP WHERE id = NEW.id;
-END;
+-- Note: updated_at should be handled at application level to avoid trigger recursion
 
 -- Trigger to update cluster post_count
 CREATE TRIGGER IF NOT EXISTS cluster_post_count_insert AFTER INSERT ON post_clusters BEGIN

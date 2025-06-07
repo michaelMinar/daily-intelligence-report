@@ -7,12 +7,36 @@ import sys
 from pathlib import Path
 from typing import Optional
 
+try:
+    from importlib.resources import files
+except ImportError:
+    # Python < 3.9 fallback
+    from importlib_resources import files
+
 from .utils.log import get_logger
 
 logger = get_logger(__name__)
 
 DEFAULT_DB_PATH = "./data/dev/intel.db"
-SCHEMA_PATH = Path(__file__).parent.parent.parent / "infra" / "schema.sql"
+
+def get_schema_path() -> Path:
+    """Get schema file path for both development and installed packages."""
+    # Try to use importlib.resources for installed packages
+    try:
+        # Look for schema.sql in the package
+        schema_files = files('daily_intelligence_report').joinpath('infra')
+        schema_path = schema_files / 'schema.sql'
+        if schema_path.is_file():
+            return Path(str(schema_path))
+    except (ImportError, AttributeError, FileNotFoundError):
+        pass
+    
+    # Fallback to relative path for development
+    schema_path = Path(__file__).parent.parent.parent / "infra" / "schema.sql"
+    if schema_path.exists():
+        return schema_path
+    
+    raise FileNotFoundError("Could not locate schema.sql file")
 
 
 def get_schema_version(db_path: Path) -> int:
@@ -55,14 +79,16 @@ def initialize_database(db_path: Optional[str] = None) -> bool:
     
     logger.info(f"Initializing database at: {db_file}")
     
-    # Check if schema file exists
-    if not SCHEMA_PATH.exists():
-        logger.error(f"Schema file not found: {SCHEMA_PATH}")
+    # Get schema file path
+    try:
+        schema_path = get_schema_path()
+    except FileNotFoundError as e:
+        logger.error(f"Schema file not found: {e}")
         return False
     
     try:
         # Read schema SQL
-        schema_sql = SCHEMA_PATH.read_text(encoding="utf-8")
+        schema_sql = schema_path.read_text(encoding="utf-8")
         
         # Get current version
         current_version = get_schema_version(db_file)
@@ -75,6 +101,9 @@ def initialize_database(db_path: Optional[str] = None) -> bool:
             
             # Execute schema SQL
             conn.executescript(schema_sql)
+            
+            # Set schema version to 1 for initial schema
+            conn.execute("PRAGMA user_version = 1")
             
             # Verify the schema was applied
             new_version = conn.execute("PRAGMA user_version").fetchone()[0]
@@ -92,7 +121,9 @@ def initialize_database(db_path: Optional[str] = None) -> bool:
             ).fetchall()
             table_names = [table[0] for table in tables]
             
-            expected_tables = ["sources", "posts", "embeddings", "clusters", "post_clusters"]
+            expected_tables = [
+                "sources", "posts", "embeddings", "clusters", "post_clusters"
+            ]
             missing_tables = [t for t in expected_tables if t not in table_names]
             
             if missing_tables:
@@ -117,7 +148,7 @@ def main() -> int:
     )
     parser.add_argument(
         "--db-path",
-        help=f"Path to the database file (default: {DEFAULT_DB_PATH})",
+        help=f"Path to database file (default: {DEFAULT_DB_PATH})",
         default=None,
     )
     parser.add_argument(
