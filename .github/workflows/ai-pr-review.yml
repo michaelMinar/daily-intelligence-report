@@ -1,0 +1,46 @@
+# .github/workflows/ai-pr-review.yml
+name: AI PR Review (OpenAI o4-mini)
+
+on:
+  pull_request:
+    branches: [ main ]                 # only when PR targets main
+    types:    [ opened, synchronize ]  # on create and on new commits
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  ai_code_review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: AI Code Review
+        uses: AleksandrFurmenkovOfficial/ai-code-review@v0.8   # ✅ exact tag
+        with:
+          # ───── GitHub context (all four are REQUIRED by this action) ─────
+          token:     ${{ secrets.GITHUB_TOKEN }}               # NOTE: key is “token”, not github_token
+          owner:     ${{ github.repository_owner }}
+          repo:      ${{ github.event.repository.name }}
+          pr_number: ${{ github.event.pull_request.number }}
+
+          # ───── OpenAI provider settings ─────
+          ai_provider:     'openai'
+          openai_api_key:  ${{ secrets.OPENAI_API_KEY }}
+          openai_model:    'o4-mini'         # or 'gpt-4o', 'gpt-4o-mini'
+          openai_temperature: '0.1'          # string per action.yml spec
+
+          # ───── Optional tuning  ─────
+          system_message: |
+            You are D
+            aily Intelligence LLC’s senior reviewer.
+            - List security issues first, performance second, style last.
+            - Keep it to ≤ 6 concise bullet points per file.
+          exclude_paths: |
+            package-lock.json
+            *.lock
+            *.min.*
+            venv/**
+            logs/**
