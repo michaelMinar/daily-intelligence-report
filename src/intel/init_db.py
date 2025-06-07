@@ -23,12 +23,21 @@ def get_schema_path() -> Path:
     """Get schema file path for both development and installed packages."""
     # Try to use importlib.resources for installed packages
     try:
-        # Look for schema.sql in the package
-        schema_files = files('daily_intelligence_report').joinpath('infra')
-        schema_path = schema_files / 'schema.sql'
-        if schema_path.is_file():
-            return Path(str(schema_path))
-    except (ImportError, AttributeError, FileNotFoundError):
+        # Get the package name dynamically from current module
+        current_module = __name__.split('.')[0]  # Gets 'intel' from 'intel.init_db'
+        
+        # Try different possible package names
+        package_names = [current_module, 'daily_intelligence_report', 'src']
+        
+        for package_name in package_names:
+            try:
+                schema_files = files(package_name).joinpath('infra')
+                schema_path = schema_files / 'schema.sql'
+                if schema_path.is_file():
+                    return Path(str(schema_path))
+            except (ImportError, AttributeError, FileNotFoundError, ModuleNotFoundError):
+                continue
+    except Exception:
         pass
     
     # Fallback to relative path for development
