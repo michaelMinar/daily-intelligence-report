@@ -5,10 +5,10 @@ Phase 1: Project Setup & Core Infrastructure
 1.  Project Initialization
     -   [X] Set up Python project structure (follow repo-layout.md)
     -   [X] Create pyproject.toml with dependencies
-    -   [ ] Initialize SQLite database schema
-    -   [ ] Configure logging
+    -   [X] Initialize SQLite database schema
+    -   [X] Configure logging
 2.  Configuration System
-    -   Implement config.yaml structure
+    -   [ ] Implement config.yaml structure
     -   Add secret management (keychain integration vs env vars)
     -   Create connector configuration templates
 

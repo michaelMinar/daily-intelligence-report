@@ -1,0 +1,52 @@
+storage:
+  sqlite_path: "./data/dev/intel.db"
+
+logging:
+  log_dir: "./logs"
+
+ingest:
+  rss_feeds:
+    - "https://example.com/rss"
+  x_accounts:
+    - "elonmusk"
+  email:
+    server: "imap.gmail.com"
+    port: 993
+    username: "user@example.com"
+    use_ssl: true
+  podcasts:
+    - "https://example.com/feed.xml"
+  youtube_channels:
+    - "UC1234567890abcdef"
+
+auth:
+  x_bearer_token: "${X_API_TOKEN}"
+  imap_password: "${EMAIL_PASS}"
+
+transcription:
+  provider: "whisper"
+  api_key: "${TRANSCRIPT_API_KEY}"
+
+embedding:
+  model: "sentence-transformers/all-MiniLM-L6-v2"
+
+llm:
+  provider: "ollama"
+  model: "llama3:8b"
+
+output:
+  report_dir: "~/DailyBriefs"
+  email_enabled: false
+  email_recipients: []
+
+
+# Example for using a cloud-based LLM instead of Ollama
+# Uncomment and edit this block if using OpenAI, Anthropic, or Google:
+#
+# llm:
+#   provider: "openai"
+#   model: "gpt-4-turbo"
+#   api_key: "${OPENAI_API_KEY}"
+#   base_url: "https://api.openai.com/v1"
+#   temperature: 0.7
+#   max_tokens: 1024
