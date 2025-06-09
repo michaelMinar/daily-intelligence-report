@@ -42,7 +42,7 @@ class Post(BaseModel):
     def set_content_hash(self) -> 'Post':
         """Set content_hash after model initialization if not provided."""
         if self.content_hash is None:
-            self.content_hash = self.computed_content_hash
+            self.content_hash = str(self.computed_content_hash)
         return self
     
     model_config = ConfigDict(

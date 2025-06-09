@@ -12,11 +12,14 @@ try:
     from importlib.resources import files
 except ImportError:
     # Python < 3.9 fallback
-    from importlib_resources import files
     try:
-        from importlib_metadata import distribution
+        from importlib_resources import files  # type: ignore[import-not-found,no-redef]
     except ImportError:
-        distribution = None
+        files = None  # type: ignore[assignment]
+    try:
+        from importlib_metadata import distribution  # type: ignore[import-not-found,no-redef]
+    except ImportError:
+        distribution = None  # type: ignore[assignment]
 
 from .utils.log import get_logger
 
@@ -106,7 +109,8 @@ def get_schema_version(db_path: Path) -> int:
     try:
         with sqlite3.connect(db_path) as conn:
             cursor = conn.execute("PRAGMA user_version")
-            return cursor.fetchone()[0]
+            result = cursor.fetchone()
+            return int(result[0]) if result else 0
     except sqlite3.Error as e:
         logger.error(f"Failed to get schema version: {e}")
         return 0
