@@ -1,9 +1,10 @@
 import os
 import tempfile
-import pytest
 from pathlib import Path
 
-from src.intel.config_loader import load_config, _expand_env
+import pytest
+
+from src.intel.config_loader import _expand_env, load_config
 
 
 class TestLoadConfig:

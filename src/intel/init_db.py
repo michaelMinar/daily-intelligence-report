@@ -8,8 +8,8 @@ from pathlib import Path
 from typing import Optional
 
 try:
-    from importlib.resources import files
     from importlib.metadata import distribution
+    from importlib.resources import files
 except ImportError:
     # Python < 3.9 fallback
     from importlib_resources import files
@@ -73,7 +73,12 @@ def get_schema_path() -> Path:
                 schema_path = schema_files / 'schema.sql'
                 if schema_path.is_file():
                     return Path(str(schema_path))
-            except (ImportError, AttributeError, FileNotFoundError, ModuleNotFoundError):
+            except (
+                ImportError,
+                AttributeError,
+                FileNotFoundError,
+                ModuleNotFoundError,
+            ):
                 continue
     except Exception:
         pass
