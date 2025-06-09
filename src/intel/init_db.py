@@ -17,7 +17,9 @@ except ImportError:
     except ImportError:
         files = None  # type: ignore[assignment]
     try:
-        from importlib_metadata import distribution  # type: ignore[import-not-found,no-redef]
+        from importlib_metadata import (
+            distribution,  # type: ignore[import-not-found,no-redef]
+        )
     except ImportError:
         distribution = None  # type: ignore[assignment]
 
