@@ -26,6 +26,7 @@ pytest-cov = "^4.1.0"
 mypy = "^1.8.0"
 ruff = "^0.2.1"
 black = "^24.1.1"
+types-pyyaml = "^6.0.12.20250516"
 
 [build-system]
 requires = ["poetry-core"]
@@ -34,6 +35,8 @@ build-backend = "poetry.core.masonry.api"
 [tool.ruff]
 line-length = 88
 target-version = "py311"
+
+[tool.ruff.lint]
 select = [
     "E",  # pycodestyle errors
     "F",  # pyflakes
