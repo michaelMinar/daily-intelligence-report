@@ -2,11 +2,11 @@
 
 import os
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, List, Optional
 
-from pydantic import BaseModel, Field, validator
 import yaml
 from dotenv import load_dotenv
+from pydantic import BaseModel, Field, validator
 
 
 class StorageSettings(BaseModel):
@@ -35,7 +35,7 @@ class AuthSettings(BaseModel):
     x_bearer_token: str = Field(..., env="DIR_X_API_TOKEN")
     imap_password: str = Field(..., env="DIR_EMAIL_PASS")
 
-    @validator('x_bearer_token', 'imap_password')
+    @validator("x_bearer_token", "imap_password")
     def validate_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Required authentication field cannot be empty")
@@ -46,7 +46,7 @@ class TranscriptionSettings(BaseModel):
     provider: str = "whisper"
     api_key: str = Field(..., env="DIR_TRANSCRIPT_API_KEY")
 
-    @validator('api_key')
+    @validator("api_key")
     def validate_api_key_not_empty(cls, v: str) -> str:
         if not v or v.strip() == "":
             raise ValueError("Transcription API key cannot be empty")
@@ -90,21 +90,21 @@ class Settings(BaseModel):
         config_dir = Path(config_path).parent
         load_dotenv(config_dir / ".env")  # Try config directory first
         load_dotenv()  # Then try current directory
-        
+
         try:
             with open(config_path) as f:
                 raw_config = yaml.safe_load(f)
-                
+
             if raw_config is None:
                 raise ValueError(f"Config file {config_path} is empty")
             if not isinstance(raw_config, dict):
                 raise ValueError(f"Config file {config_path} must contain a dictionary")
-                
+
             # Expand environment variables
             expanded_config = cls._expand_env_vars(raw_config)
-            
+
             return cls(**expanded_config)
-            
+
         except FileNotFoundError:
             raise FileNotFoundError(f"Config file not found: {config_path}") from None
         except yaml.YAMLError as e:
@@ -117,7 +117,9 @@ class Settings(BaseModel):
             return {key: Settings._expand_env_vars(value) for key, value in data.items()}
         elif isinstance(data, list):
             return [Settings._expand_env_vars(item) for item in data]
-        elif isinstance(data, str) and data.startswith("${") and data.endswith("}") and len(data) > 3:
+        elif (
+            isinstance(data, str) and data.startswith("${") and data.endswith("}") and len(data) > 3
+        ):
             env_var = data[2:-1]
             return os.getenv(env_var, "")
         else:

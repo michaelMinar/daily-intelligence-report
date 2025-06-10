@@ -1,14 +1,12 @@
 """Test configuration validation logic."""
 
-import os
-from unittest.mock import patch
 
 import pytest
 
 from src.intel.config_schema import (
+    REQUIRED_ENV_VARS,
     get_missing_required_vars,
     get_remediation_message,
-    REQUIRED_ENV_VARS
 )
 
 
@@ -19,8 +17,8 @@ class TestConfigSchema:
         """Test when all required environment variables are present."""
         env_vars = {
             "DIR_X_API_TOKEN": "token1",
-            "DIR_EMAIL_PASS": "pass1", 
-            "DIR_TRANSCRIPT_API_KEY": "key1"
+            "DIR_EMAIL_PASS": "pass1",
+            "DIR_TRANSCRIPT_API_KEY": "key1",
         }
         missing = get_missing_required_vars(env_vars)
         assert missing == []
@@ -30,7 +28,7 @@ class TestConfigSchema:
         env_vars = {
             "DIR_X_API_TOKEN": "token1",
             # DIR_EMAIL_PASS missing
-            "DIR_TRANSCRIPT_API_KEY": "key1"
+            "DIR_TRANSCRIPT_API_KEY": "key1",
         }
         missing = get_missing_required_vars(env_vars)
         assert "DIR_EMAIL_PASS" in missing
@@ -48,8 +46,8 @@ class TestConfigSchema:
         """Test that empty string values are considered missing."""
         env_vars = {
             "DIR_X_API_TOKEN": "",
-            "DIR_EMAIL_PASS": "pass1", 
-            "DIR_TRANSCRIPT_API_KEY": "key1"
+            "DIR_EMAIL_PASS": "pass1",
+            "DIR_TRANSCRIPT_API_KEY": "key1",
         }
         missing = get_missing_required_vars(env_vars)
         assert "DIR_X_API_TOKEN" in missing
@@ -63,7 +61,7 @@ class TestConfigSchema:
         """Test remediation message for single missing variable."""
         missing_vars = ["DIR_X_API_TOKEN"]
         message = get_remediation_message(missing_vars)
-        
+
         assert "Missing required environment variables: DIR_X_API_TOKEN" in message
         assert "export DIR_X_API_TOKEN=<your_token>" in message
         assert ".env file" in message
@@ -72,7 +70,7 @@ class TestConfigSchema:
         """Test remediation message for multiple missing variables."""
         missing_vars = ["DIR_X_API_TOKEN", "DIR_EMAIL_PASS"]
         message = get_remediation_message(missing_vars)
-        
+
         assert "DIR_X_API_TOKEN, DIR_EMAIL_PASS" in message
         assert "export DIR_X_API_TOKEN=<your_token>" in message
         assert ".env file" in message
@@ -84,12 +82,12 @@ class TestConfigValidationIntegration:
     def test_config_validation_with_actual_env(self, monkeypatch):
         """Test config validation using actual environment variables."""
         from src.intel.config_loader import validate_config
-        
+
         # Set required environment variables
         monkeypatch.setenv("DIR_X_API_TOKEN", "test_token")
         monkeypatch.setenv("DIR_EMAIL_PASS", "test_pass")
         monkeypatch.setenv("DIR_TRANSCRIPT_API_KEY", "test_key")
-        
+
         # Should not raise any exceptions
         config = {"test": "data"}
         result = validate_config(config)
@@ -98,11 +96,11 @@ class TestConfigValidationIntegration:
     def test_config_validation_missing_env_raises_error(self, monkeypatch):
         """Test that missing environment variables cause validation to fail."""
         from src.intel.config_loader import validate_config
-        
+
         # Clear environment variables
         for var in REQUIRED_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
-        
+
         config = {"test": "data"}
         with pytest.raises(ValueError, match="Configuration validation failed"):
             validate_config(config)
@@ -110,15 +108,15 @@ class TestConfigValidationIntegration:
     def test_config_validation_error_includes_remediation(self, monkeypatch):
         """Test that validation error includes helpful remediation message."""
         from src.intel.config_loader import validate_config
-        
+
         # Clear environment variables
         for var in REQUIRED_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
-        
+
         config = {"test": "data"}
         try:
             validate_config(config)
-            assert False, "Should have raised ValueError"
+            raise AssertionError("Should have raised ValueError")
         except ValueError as e:
             error_message = str(e)
             assert "Missing required environment variables" in error_message
