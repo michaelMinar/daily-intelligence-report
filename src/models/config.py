@@ -7,6 +7,7 @@ from typing import Any, List, Optional
 import yaml
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, validator
+from pydantic_settings import BaseSettings
 
 
 class StorageSettings(BaseModel):
@@ -31,7 +32,7 @@ class EmailSettings(BaseModel):
     use_ssl: bool = True
 
 
-class AuthSettings(BaseModel):
+class AuthSettings(BaseSettings):
     x_bearer_token: str = Field(..., env="DIR_X_API_TOKEN")
     imap_password: str = Field(..., env="DIR_EMAIL_PASS")
 
@@ -42,7 +43,7 @@ class AuthSettings(BaseModel):
         return v
 
 
-class TranscriptionSettings(BaseModel):
+class TranscriptionSettings(BaseSettings):
     provider: str = "whisper"
     api_key: str = Field(..., env="DIR_TRANSCRIPT_API_KEY")
 
@@ -103,12 +104,28 @@ class Settings(BaseModel):
             # Expand environment variables
             expanded_config = cls._expand_env_vars(raw_config)
 
-            return cls(**expanded_config)
+            # Create and validate the settings instance
+            instance = cls(**expanded_config)
+
+            # Additional validation to ensure required env vars are present
+            cls._validate_required_env_vars()
+
+            return instance
 
         except FileNotFoundError:
             raise FileNotFoundError(f"Config file not found: {config_path}") from None
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML in config file {config_path}: {e}") from e
+
+    @staticmethod
+    def _validate_required_env_vars() -> None:
+        """Validate that all required environment variables are present."""
+        from ..intel.config_schema import get_missing_required_vars, get_remediation_message
+
+        missing_vars = get_missing_required_vars(os.environ)
+        if missing_vars:
+            remediation = get_remediation_message(missing_vars)
+            raise ValueError(f"Configuration validation failed:\n{remediation}")
 
     @staticmethod
     def _expand_env_vars(data: Any) -> Any:

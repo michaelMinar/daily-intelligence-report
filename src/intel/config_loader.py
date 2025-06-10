@@ -18,7 +18,9 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
             raise ValueError(f"Config file {config_path} is empty")
         if not isinstance(raw, dict):
             raise ValueError(f"Config file {config_path} must contain a dictionary")
-        return _expand_env(raw)
+
+        expanded_config = _expand_env(raw)
+        return validate_config(expanded_config)
     except FileNotFoundError:
         raise FileNotFoundError(f"Config file not found: {config_path}") from None
     except yaml.YAMLError as e:

@@ -6,13 +6,10 @@ from typing import Dict, List, Set
 REQUIRED_ENV_VARS: Set[str] = {"DIR_X_API_TOKEN", "DIR_EMAIL_PASS", "DIR_TRANSCRIPT_API_KEY"}
 
 # Optional environment variables with defaults
-OPTIONAL_ENV_VARS: Dict[str, str] = {
-    "DIR_OPENAI_API_KEY": "",
-    "DIR_ANTHROPIC_API_KEY": "",
-    "DIR_GOOGLE_API_KEY": "",
-}
+OPTIONAL_ENV_VARS: Set[str] = {"DIR_OPENAI_API_KEY", "DIR_ANTHROPIC_API_KEY", "DIR_GOOGLE_API_KEY"}
 
 # Environment variable to config path mapping
+# Useful for documentation, tooling, and enhanced error messages
 ENV_VAR_MAPPING: Dict[str, str] = {
     "DIR_X_API_TOKEN": "auth.x_bearer_token",
     "DIR_EMAIL_PASS": "auth.imap_password",
@@ -36,8 +33,19 @@ def get_remediation_message(missing_vars: List[str]) -> str:
     var_list = ", ".join(missing_vars)
     example_var = missing_vars[0]
 
+    # Add context about what these variables are used for
+    var_descriptions = []
+    for var in missing_vars:
+        if var in ENV_VAR_MAPPING:
+            var_descriptions.append(f"  {var} -> {ENV_VAR_MAPPING[var]}")
+
+    description_text = ""
+    if var_descriptions:
+        description_text = "\nThese variables map to:\n" + "\n".join(var_descriptions) + "\n"
+
     return (
         f"Missing required environment variables: {var_list}\n"
+        f"{description_text}"
         f"Set them via:\n"
         f"  export {example_var}=<your_token>\n"
         f"Or add them to a .env file in the project root."
