@@ -2,9 +2,15 @@ import os
 from typing import Any, Dict
 
 import yaml
+from dotenv import load_dotenv
+
+from .config_schema import get_missing_required_vars, get_remediation_message
 
 
 def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
+    # Load .env file if present
+    load_dotenv()
+    
     try:
         with open(config_path) as f:
             raw = yaml.safe_load(f)
@@ -17,6 +23,17 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
         raise FileNotFoundError(f"Config file not found: {config_path}") from None
     except yaml.YAMLError as e:
         raise ValueError(f"Invalid YAML in config file {config_path}: {e}") from e
+
+
+def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
+    """Validate configuration and check for missing required environment variables."""
+    missing_vars = get_missing_required_vars(os.environ)
+    
+    if missing_vars:
+        remediation = get_remediation_message(missing_vars)
+        raise ValueError(f"Configuration validation failed:\n{remediation}")
+    
+    return config
 
 def _expand_env(d: Dict[str, Any]) -> Dict[str, Any]:
     for key, val in d.items():
