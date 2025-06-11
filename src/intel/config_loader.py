@@ -29,11 +29,13 @@ def load_config(config_path: str = "config.yaml") -> Dict[str, Any]:
 
 def validate_config(config: Dict[str, Any]) -> Dict[str, Any]:
     """Validate configuration and check for missing required environment variables."""
-    missing_vars = get_missing_required_vars(os.environ)
+    # Only validate environment variables if the config contains auth/transcription sections
+    if "auth" in config or "transcription" in config:
+        missing_vars = get_missing_required_vars(dict(os.environ))
 
-    if missing_vars:
-        remediation = get_remediation_message(missing_vars)
-        raise ValueError(f"Configuration validation failed:\n{remediation}")
+        if missing_vars:
+            remediation = get_remediation_message(missing_vars)
+            raise ValueError(f"Configuration validation failed:\n{remediation}")
 
     return config
 

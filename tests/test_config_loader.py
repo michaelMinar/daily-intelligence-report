@@ -155,8 +155,13 @@ class TestExpandEnv:
 
 
 class TestConfigLoaderIntegration:
-    def test_load_actual_config_file(self):
+    def test_load_actual_config_file(self, monkeypatch):
         """Integration test with the actual config.yaml file"""
+        # Set required environment variables for the test
+        monkeypatch.setenv("DIR_X_API_TOKEN", "test_x_token")
+        monkeypatch.setenv("DIR_EMAIL_PASS", "test_email_pass")
+        monkeypatch.setenv("DIR_TRANSCRIPT_API_KEY", "test_transcript_key")
+        
         config_path = Path(__file__).parent.parent / "config.yaml"
         if config_path.exists():
             # This should not raise any exceptions

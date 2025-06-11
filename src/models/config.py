@@ -6,8 +6,7 @@ from typing import Any, List, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, validator
-from pydantic_settings import BaseSettings
+from pydantic import BaseModel, validator
 
 
 class StorageSettings(BaseModel):
@@ -32,9 +31,9 @@ class EmailSettings(BaseModel):
     use_ssl: bool = True
 
 
-class AuthSettings(BaseSettings):
-    x_bearer_token: str = Field(..., env="DIR_X_API_TOKEN")
-    imap_password: str = Field(..., env="DIR_EMAIL_PASS")
+class AuthSettings(BaseModel):
+    x_bearer_token: str
+    imap_password: str
 
     @validator("x_bearer_token", "imap_password")
     def validate_not_empty(cls, v: str) -> str:
@@ -43,9 +42,9 @@ class AuthSettings(BaseSettings):
         return v
 
 
-class TranscriptionSettings(BaseSettings):
+class TranscriptionSettings(BaseModel):
     provider: str = "whisper"
-    api_key: str = Field(..., env="DIR_TRANSCRIPT_API_KEY")
+    api_key: str
 
     @validator("api_key")
     def validate_api_key_not_empty(cls, v: str) -> str:
@@ -61,7 +60,7 @@ class EmbeddingSettings(BaseModel):
 class LLMSettings(BaseModel):
     provider: str = "ollama"
     model: str = "llama3:8b"
-    api_key: Optional[str] = Field(None, env="DIR_OPENAI_API_KEY")
+    api_key: Optional[str] = None
     base_url: Optional[str] = None
     temperature: float = 0.7
     max_tokens: int = 1024
@@ -122,7 +121,7 @@ class Settings(BaseModel):
         """Validate that all required environment variables are present."""
         from ..intel.config_schema import get_missing_required_vars, get_remediation_message
 
-        missing_vars = get_missing_required_vars(os.environ)
+        missing_vars = get_missing_required_vars(dict(os.environ))
         if missing_vars:
             remediation = get_remediation_message(missing_vars)
             raise ValueError(f"Configuration validation failed:\n{remediation}")

@@ -101,7 +101,9 @@ class TestConfigValidationIntegration:
         for var in REQUIRED_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
 
-        config = {"test": "data"}
+        config = {
+            "auth": {"x_bearer_token": "${DIR_X_API_TOKEN}", "imap_password": "${DIR_EMAIL_PASS}"}
+        }
         with pytest.raises(ValueError, match="Configuration validation failed"):
             validate_config(config)
 
@@ -113,7 +115,9 @@ class TestConfigValidationIntegration:
         for var in REQUIRED_ENV_VARS:
             monkeypatch.delenv(var, raising=False)
 
-        config = {"test": "data"}
+        config = {
+            "auth": {"x_bearer_token": "${DIR_X_API_TOKEN}", "imap_password": "${DIR_EMAIL_PASS}"}
+        }
         try:
             validate_config(config)
             raise AssertionError("Should have raised ValueError")
