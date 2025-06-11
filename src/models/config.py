@@ -6,7 +6,8 @@ from typing import Any, List, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, validator
+from pydantic import BaseModel, Field, validator
+from pydantic_settings import BaseSettings
 
 
 class StorageSettings(BaseModel):
@@ -32,24 +33,24 @@ class EmailSettings(BaseModel):
 
 
 class AuthSettings(BaseModel):
-    x_bearer_token: str
-    imap_password: str
+    x_bearer_token: Optional[str] = None
+    imap_password: Optional[str] = None
 
     @validator("x_bearer_token", "imap_password")
-    def validate_not_empty(cls, v: str) -> str:
-        if not v or v.strip() == "":
-            raise ValueError("Required authentication field cannot be empty")
+    def validate_not_empty(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v.strip() == "":
+            raise ValueError("Authentication field cannot be empty string")
         return v
 
 
 class TranscriptionSettings(BaseModel):
     provider: str = "whisper"
-    api_key: str
+    api_key: Optional[str] = None
 
     @validator("api_key")
-    def validate_api_key_not_empty(cls, v: str) -> str:
-        if not v or v.strip() == "":
-            raise ValueError("Transcription API key cannot be empty")
+    def validate_api_key_not_empty(cls, v: Optional[str]) -> Optional[str]:
+        if v is not None and v.strip() == "":
+            raise ValueError("Transcription API key cannot be empty string")
         return v
 
 
@@ -72,16 +73,18 @@ class OutputSettings(BaseModel):
     email_recipients: List[str] = []
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
     storage: StorageSettings = StorageSettings()
     logging: LoggingSettings = LoggingSettings()
     ingest: IngestSettings = IngestSettings()
     email: EmailSettings = EmailSettings()
-    auth: AuthSettings
-    transcription: TranscriptionSettings
+    auth: Optional[AuthSettings] = None
+    transcription: Optional[TranscriptionSettings] = None
     embedding: EmbeddingSettings = EmbeddingSettings()
     llm: LLMSettings = LLMSettings()
     output: OutputSettings = OutputSettings()
+
+    model_config = {"env_file": ".env"}
 
     @classmethod
     def from_yaml(cls, config_path: str = "config.yaml") -> "Settings":
@@ -100,14 +103,11 @@ class Settings(BaseModel):
             if not isinstance(raw_config, dict):
                 raise ValueError(f"Config file {config_path} must contain a dictionary")
 
-            # Expand environment variables
+            # Expand environment variables in the config
             expanded_config = cls._expand_env_vars(raw_config)
-
-            # Create and validate the settings instance
+            
+            # Create the settings instance
             instance = cls(**expanded_config)
-
-            # Additional validation to ensure required env vars are present
-            cls._validate_required_env_vars()
 
             return instance
 
@@ -115,16 +115,6 @@ class Settings(BaseModel):
             raise FileNotFoundError(f"Config file not found: {config_path}") from None
         except yaml.YAMLError as e:
             raise ValueError(f"Invalid YAML in config file {config_path}: {e}") from e
-
-    @staticmethod
-    def _validate_required_env_vars() -> None:
-        """Validate that all required environment variables are present."""
-        from ..intel.config_schema import get_missing_required_vars, get_remediation_message
-
-        missing_vars = get_missing_required_vars(dict(os.environ))
-        if missing_vars:
-            remediation = get_remediation_message(missing_vars)
-            raise ValueError(f"Configuration validation failed:\n{remediation}")
 
     @staticmethod
     def _expand_env_vars(data: Any) -> Any:
@@ -137,6 +127,11 @@ class Settings(BaseModel):
             isinstance(data, str) and data.startswith("${") and data.endswith("}") and len(data) > 3
         ):
             env_var = data[2:-1]
-            return os.getenv(env_var, "")
+            value = os.getenv(env_var)
+            if value is None:
+                # Return None for missing env vars so they can be handled by validation
+                return None
+            return value
         else:
             return data
+
