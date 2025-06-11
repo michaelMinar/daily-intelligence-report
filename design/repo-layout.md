@@ -11,10 +11,17 @@ daily‑intel/
 │   │   └── email.py
 │   │   └── podcast.py
 │   │   └── youtube.py
+│   ├── intel/
+│	│   ├── utils/
+│   │   ├── config_loader.py
+│   │   ├── init_db.py
+│   │   └── logging_config.py
 │   ├── models/
-│   │   ├── embed.py
+│   │   ├── embeddings.py
 │   │   ├── cluster.py
-│   │   └── summarise.py
+│   │   ├── post.py
+│   │   ├── source.py
+│   │   └── summaries.py
 │   ├── pipeline/
 │   │   └── daily_report.py
 │   ├── render/

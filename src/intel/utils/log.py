@@ -6,10 +6,10 @@ from typing import Any
 
 def get_logger(name: str) -> logging.Logger:
     """Get a logger instance for the given name.
-    
+
     Args:
         name: Logger name, typically __name__ from calling module
-        
+
     Returns:
         Logger instance configured with intel settings
     """
@@ -23,7 +23,7 @@ def log_with_context(
     **context: Any,
 ) -> None:
     """Log a message with structured context.
-    
+
     Args:
         logger: Logger instance
         level: Logging level (e.g., logging.INFO)
@@ -40,7 +40,7 @@ def log_operation(
     **context: Any,
 ) -> None:
     """Log an operation with context for traceability.
-    
+
     Args:
         logger: Logger instance
         operation: Description of the operation

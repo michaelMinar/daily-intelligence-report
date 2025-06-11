@@ -20,12 +20,12 @@ ingest:
     - "UC1234567890abcdef"
 
 auth:
-  x_bearer_token: "${X_API_TOKEN}"
-  imap_password: "${EMAIL_PASS}"
+  x_bearer_token: "${DIR_X_API_TOKEN}"
+  imap_password: "${DIR_EMAIL_PASS}"
 
 transcription:
   provider: "whisper"
-  api_key: "${TRANSCRIPT_API_KEY}"
+  api_key: "${DIR_TRANSCRIPT_API_KEY}"
 
 embedding:
   model: "sentence-transformers/all-MiniLM-L6-v2"

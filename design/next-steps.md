@@ -4,189 +4,96 @@ This document outlines how to implement and integrate the `config.yaml` configur
 
 ## Goals
 
-- Centralize runtime parameters.
-- Allow environment-specific overrides.
-- Securely manage secrets via environment variables or keychain references.
-
----
-
-## Files Created
-
-- `config.yaml`: Project-level YAML file for all configurable values.
-- `src/intel/config_loader.py`: Utility for loading and parsing the config file with environment variable support.
-
----
-
-## 1. config.yaml Structure
-
-```yaml
-# Runtime paths
-storage:
-  sqlite_path: "./data/dev/intel.db"
-
-logging:
-  log_dir: "./logs"
-
-# Ingest targets
-ingest:
-  rss_feeds:
-    - "https://example.com/rss"
-  x_accounts:
-    - "elonmusk"
-  email:
-    server: "imap.gmail.com"
-    port: 993
-    username: "user@example.com"
-    use_ssl: true
-  podcasts:
-    - "https://example.com/feed.xml"
-  youtube_channels:
-    - "UC1234567890abcdef"
-
-# Auth (read from environment)
-auth:
-  x_bearer_token: "${X_API_TOKEN}"
-  imap_password: "${EMAIL_PASS}"
-
-# Transcription service
-transcription:
-  provider: "whisper"
-  api_key: "${TRANSCRIPT_API_KEY}"
-
-# Embeddings & LLMs
-embedding:
-  model: "sentence-transformers/all-MiniLM-L6-v2"
-
-llm:
-  provider: "ollama"
-  model: "llama3:8b"
-
-# Report output
-output:
-  report_dir: "~/DailyBriefs"
-  email_enabled: false
-  email_recipients: []
-```
-
----
-
-## 2. config_loader.py
-
-File: `src/intel/config_loader.py`
-
-```python
-import os
-import yaml
-from pathlib import Path
-
-def load_config(config_path="config.yaml"):
-    with open(config_path) as f:
-        raw = yaml.safe_load(f)
-    return _expand_env(raw)
-
-def _expand_env(d):
-    for key, val in d.items():
-        if isinstance(val, dict):
-            d[key] = _expand_env(val)
-        elif isinstance(val, str) and val.startswith("${") and val.endswith("}"):
-            d[key] = os.getenv(val[2:-1], "")
-    return d
-```
-
----
-
-## 3. Integration Points
-
-Update the following modules to consume values from `load_config()`:
-- `init_db.py` — use `config["storage"]["sqlite_path"]`
-- `logging_config.py` — point to `config["logging"]["log_dir"]`
-- Ingest modules — pull in source targets and secrets from config
-- Output & summarization steps — check `config["output"]` for delivery paths
-
----
-
-## 4. Optional Extensions
-
-- Add Pydantic-based schema validation in `src/intel/config.py`
-- Support environment-specific config like `config.dev.yaml`, `config.prod.yaml`
-
----
-
-## 5. Developer Notes
-
-- Always commit a non-secret template (like `config.sample.yaml`)
-- Use `.env` or keychain to store sensitive values, not the YAML file
-
-
----
-
-## 6. Supporting Both Local and Cloud LLMs
-
-### Config Flexibility
-
-The `llm` section of `config.yaml` is designed to support both local models via [Ollama](https://ollama.com) and remote models via cloud APIs such as OpenAI, Anthropic, or Google:
-
-**Local (Default)**
-
-```yaml
-llm:
-  provider: "ollama"
-  model: "llama3:8b"
-```
-
-**Cloud Example (OpenAI)**
-
-```yaml
-llm:
-  provider: "openai"
-  model: "gpt-4-turbo"
-  api_key: "${OPENAI_API_KEY}"
-  base_url: "https://api.openai.com/v1"
-  temperature: 0.7
-  max_tokens: 1024
-```
-
-**Cloud Example (Anthropic)**
-
-```yaml
-llm:
-  provider: "anthropic"
-  model: "claude-3-sonnet"
-  api_key: "${ANTHROPIC_API_KEY}"
-  temperature: 0.5
-  max_tokens: 2048
-```
-
----
-
-### Adapter Strategy
-
-Create a file `src/pipeline/llm_adapter.py` with logic to dispatch between providers:
-
-```python
-from intel.config_loader import load_config
-
-config = load_config()
-llm_cfg = config["llm"]
-
-def get_llm_client():
-    provider = llm_cfg["provider"]
-    if provider == "ollama":
-        return OllamaClient(model=llm_cfg["model"])
-    elif provider == "openai":
-        return OpenAIClient(api_key=llm_cfg["api_key"], model=llm_cfg["model"])
-    elif provider == "anthropic":
-        return AnthropicClient(api_key=llm_cfg["api_key"], model=llm_cfg["model"])
-    else:
-        raise ValueError(f"Unsupported LLM provider: {provider}")
-```
-
-Define a common `LLMClient` interface for `.generate(text)` to standardize usage downstream.
-
----
+- Decide on an implementation for secret management. This can be via keychain (on mac), env variables or something else. We should consider cross-platform support as we want to eventually run some CI integration tests on github workflows, which are built against linux
+- Outline a design for the implementation below that an AI coding assistant can implement with code assist frameworks.
+- Decide on what level of testing should be included as part of this commit/feature work.
 
 ### Best Practices
 
-- Keep secrets out of `config.yaml` — use `${...}` and environment variables.
-- Write separate adapter classes per provider to isolate logic.
+- Keep secrets out of `config.yaml` — use `${...}` and environment variables at minimum.
 - Fail fast with informative errors if config is incomplete or invalid.
+
+## Implementation Plan
+
+### Secret Management Strategy
+
+**Decision**: Start with enhanced environment variable support for this feature branch. Future iterations will add keychain integration for local development convenience.
+
+### Current Feature Branch: Environment Variable Enhancement
+
+#### Phase 1: Enhanced Environment Variable Support
+- [ ] Add validation for required environment variables in `config_loader.py`
+- [ ] Implement `validate_config()` function to check for missing secrets
+- [ ] Add detailed error messages with remediation tips when required environment variables are missing
+- [ ] Create `config_schema.py` to define required vs optional configuration keys
+- [ ] **CRITICAL**: Pin Pydantic version in `pyproject.toml` to avoid v1/v2 API drift
+
+#### Phase 2: .env File Support for Local Development
+- [ ] Add `python-dotenv` dependency to `pyproject.toml`
+- [ ] Update `config_loader.py` to load `.env` file if present
+- [ ] Add `.env.example` template file with consistent naming (e.g., `DIR_LLM_API_KEY`)
+- [ ] Ensure `.env` is in `.gitignore`
+- [ ] **CRITICAL**: Add `.pre-commit-config.yaml` with detect-secrets, yamllint, ruff hooks
+
+#### Phase 3: Configuration Validation
+- [ ] Create Pydantic models for configuration validation in `src/models/config.py`
+- [ ] Implement strict typing for all config sections (storage, auth, llm, etc.)
+- [ ] Add validation for API key formats, URL formats, file paths
+- [ ] Implement config validation on startup with clear error messages
+- [ ] **CRITICAL**: Keep config_loader.py thin - expose Settings.from_yaml() factory method
+- [ ] **CRITICAL**: Return typed Settings object from validate_config(), not raw dict
+
+#### Phase 4: Testing & Documentation
+- [ ] Add unit tests for enhanced environment variable handling
+- [ ] Add integration tests for config validation scenarios
+- [ ] **CRITICAL**: Create `tests/test_env_precedence.py` with parametrized test matrix (with env, with .env, missing env, malformed env)
+- [ ] Add tests for config validation and error handling
+- [ ] Add CI dummy config test to catch missing secrets in GitHub Actions
+- [ ] Update README with environment variable setup instructions
+- [ ] Add `docs/configuration.md` with setup guide and common errors
+
+### Technical Design for Current Branch
+
+#### New Files to Create:
+- `src/models/config.py` - Pydantic config models
+- `tests/test_config_validation.py` - Config validation tests
+- `.env.example` - Template for local development
+
+#### Modified Files:
+- `src/intel/config_loader.py` - Enhanced with validation and .env support
+- `pyproject.toml` - Add python-dotenv and pydantic dependencies
+- `config.yaml` - Add validation markers and better documentation
+- `.gitignore` - Ensure .env is ignored
+
+#### Configuration Resolution Order:
+1. Environment variables (`${VAR_NAME}`)
+2. .env file variables (if present)
+3. Default values (if specified)
+4. Fail with clear error message
+
+### Testing Strategy
+
+**Level**: Comprehensive unit and integration testing
+- Unit tests for environment variable expansion and validation
+- Integration tests for config loading with .env files
+- Test configuration validation edge cases
+- Mock missing environment variables for error testing
+
+### Success Criteria for Current Branch
+
+- [ ] All secrets removed from `config.yaml`
+- [ ] Enhanced environment variable validation working
+- [ ] .env file support for local development
+- [ ] CI/CD pipeline compatibility maintained
+- [ ] Clear error messages for missing configuration
+- [ ] Backward compatibility with existing environment variable usage
+- [ ] Documentation for environment variable setup
+
+## Future Work (Next Feature Branches)
+
+### Keychain Integration (Future)
+- Add `keyring` dependency for cross-platform keychain access
+- Extend config_loader to support keychain fallback: `${KEYCHAIN:service:username}`
+- Implement keychain storage/retrieval functions
+- Add CLI helper for storing secrets in keychain
+- Cross-platform keychain testing
