@@ -4,8 +4,6 @@ import os
 import tempfile
 from pathlib import Path
 
-import pytest
-
 from src.models.config import Settings
 
 
@@ -149,6 +147,11 @@ auth:
 
     def test_from_yaml_with_dotenv_file(self, monkeypatch):
         """Test Settings.from_yaml loads from .env file"""
+        # Clear any existing DIR_ environment variables to avoid contamination
+        for key in list(os.environ.keys()):
+            if key.startswith("DIR_"):
+                monkeypatch.delenv(key, raising=False)
+        
         # Create temporary directory for config and .env files
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

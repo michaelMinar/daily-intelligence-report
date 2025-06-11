@@ -79,50 +79,86 @@ class TestConfigSchema:
 class TestConfigValidationIntegration:
     """Integration tests for configuration validation."""
 
-    def test_config_validation_with_actual_env(self, monkeypatch):
-        """Test config validation using actual environment variables."""
-        from src.intel.config_loader import validate_config
+    def test_settings_validation_with_actual_env(self, monkeypatch):
+        """Test that Settings.from_yaml works with valid environment variables."""
+        from src.models.config import Settings
+        import tempfile
+        import os
 
         # Set required environment variables
         monkeypatch.setenv("DIR_X_API_TOKEN", "test_token")
         monkeypatch.setenv("DIR_EMAIL_PASS", "test_pass")
         monkeypatch.setenv("DIR_TRANSCRIPT_API_KEY", "test_key")
 
-        # Should not raise any exceptions
-        config = {"test": "data"}
-        result = validate_config(config)
-        assert result == config
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
+auth:
+  x_bearer_token: ${DIR_X_API_TOKEN}
+  imap_password: ${DIR_EMAIL_PASS}
+transcription:
+  provider: whisper
+  api_key: ${DIR_TRANSCRIPT_API_KEY}
+"""
+            )
+            temp_path = f.name
 
-    def test_config_validation_missing_env_raises_error(self, monkeypatch):
-        """Test that missing environment variables cause validation to fail."""
-        from src.intel.config_loader import validate_config
-
-        # Clear environment variables
-        for var in REQUIRED_ENV_VARS:
-            monkeypatch.delenv(var, raising=False)
-
-        config = {
-            "auth": {"x_bearer_token": "${DIR_X_API_TOKEN}", "imap_password": "${DIR_EMAIL_PASS}"}
-        }
-        with pytest.raises(ValueError, match="Configuration validation failed"):
-            validate_config(config)
-
-    def test_config_validation_error_includes_remediation(self, monkeypatch):
-        """Test that validation error includes helpful remediation message."""
-        from src.intel.config_loader import validate_config
-
-        # Clear environment variables
-        for var in REQUIRED_ENV_VARS:
-            monkeypatch.delenv(var, raising=False)
-
-        config = {
-            "auth": {"x_bearer_token": "${DIR_X_API_TOKEN}", "imap_password": "${DIR_EMAIL_PASS}"}
-        }
         try:
-            validate_config(config)
-            raise AssertionError("Should have raised ValueError")
-        except ValueError as e:
-            error_message = str(e)
-            assert "Missing required environment variables" in error_message
-            assert "export" in error_message
-            assert ".env file" in error_message
+            settings = Settings.from_yaml(temp_path)
+            assert settings.auth.x_bearer_token == "test_token"
+            assert settings.auth.imap_password == "test_pass"
+            assert settings.transcription.api_key == "test_key"
+        finally:
+            os.unlink(temp_path)
+
+    def test_settings_validation_with_empty_strings_raises_error(self, monkeypatch):
+        """Test that empty string environment variables cause validation to fail."""
+        from src.models.config import Settings
+        import tempfile
+        import os
+
+        # Set empty environment variables
+        monkeypatch.setenv("DIR_X_API_TOKEN", "")
+        monkeypatch.setenv("DIR_EMAIL_PASS", "valid_pass")
+        monkeypatch.setenv("DIR_TRANSCRIPT_API_KEY", "valid_key")
+
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(
+                """
+auth:
+  x_bearer_token: ${DIR_X_API_TOKEN}
+  imap_password: ${DIR_EMAIL_PASS}
+transcription:
+  provider: whisper
+  api_key: ${DIR_TRANSCRIPT_API_KEY}
+"""
+            )
+            temp_path = f.name
+
+        try:
+            with pytest.raises(ValueError, match="Authentication field cannot be empty string"):
+                Settings.from_yaml(temp_path)
+        finally:
+            os.unlink(temp_path)
+
+    def test_get_missing_required_vars_integration(self, monkeypatch):
+        """Test get_missing_required_vars and get_remediation_message functions with actual environment."""
+        import os
+
+        # Clear environment variables
+        for var in REQUIRED_ENV_VARS:
+            monkeypatch.delenv(var, raising=False)
+
+        # Set only some variables
+        monkeypatch.setenv("DIR_X_API_TOKEN", "test_token")
+
+        missing = get_missing_required_vars(dict(os.environ))
+        assert "DIR_EMAIL_PASS" in missing
+        assert "DIR_TRANSCRIPT_API_KEY" in missing
+        assert "DIR_X_API_TOKEN" not in missing
+
+        # Test remediation message
+        remediation = get_remediation_message(missing)
+        assert "Missing required environment variables" in remediation
+        assert "export" in remediation
+        assert ".env file" in remediation

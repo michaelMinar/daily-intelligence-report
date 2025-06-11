@@ -130,8 +130,8 @@ transcription:
 class TestConfigValidation:
     """Test configuration validation and error handling."""
 
-    def test_missing_required_env_vars_raises_error(self, monkeypatch):
-        """Test that missing required environment variables raise validation errors."""
+    def test_missing_required_env_vars_sets_none_values(self, monkeypatch):
+        """Test that missing environment variables result in None values."""
         # Clear all relevant env vars
         for var in ["DIR_X_API_TOKEN", "DIR_EMAIL_PASS", "DIR_TRANSCRIPT_API_KEY"]:
             monkeypatch.delenv(var, raising=False)
@@ -150,8 +150,11 @@ transcription:
             temp_path = f.name
 
         try:
-            with pytest.raises(ValueError, match="Required authentication field cannot be empty"):
-                Settings.from_yaml(temp_path)
+            settings = Settings.from_yaml(temp_path)
+            # Missing env vars should result in None values
+            assert settings.auth.x_bearer_token is None
+            assert settings.auth.imap_password is None
+            assert settings.transcription.api_key is None
         finally:
             os.unlink(temp_path)
 
@@ -183,7 +186,7 @@ transcription:
             temp_path = f.name
 
         try:
-            with pytest.raises(ValueError, match="Required authentication field cannot be empty"):
+            with pytest.raises(ValueError, match="Authentication field cannot be empty string"):
                 Settings.from_yaml(temp_path)
         finally:
             os.unlink(temp_path)

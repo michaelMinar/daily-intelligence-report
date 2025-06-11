@@ -6,7 +6,7 @@ from typing import Any, List, Optional
 
 import yaml
 from dotenv import load_dotenv
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, validator
 from pydantic_settings import BaseSettings
 
 
@@ -84,15 +84,18 @@ class Settings(BaseSettings):
     llm: LLMSettings = LLMSettings()
     output: OutputSettings = OutputSettings()
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "extra": "ignore"}
 
     @classmethod
     def from_yaml(cls, config_path: str = "config.yaml") -> "Settings":
         """Factory method to create Settings from YAML file with environment variable expansion."""
         # Load .env file if present (look in same directory as config file and current directory)
+        # Note: load_dotenv() will not override existing environment variables by default
         config_dir = Path(config_path).parent
-        load_dotenv(config_dir / ".env")  # Try config directory first
-        load_dotenv()  # Then try current directory
+        if (config_dir / ".env").exists():
+            load_dotenv(config_dir / ".env")  # Try config directory first
+        if Path(".env").exists() and Path(".env").resolve() != (config_dir / ".env").resolve():
+            load_dotenv()  # Then try current directory if different from config dir
 
         try:
             with open(config_path) as f:
