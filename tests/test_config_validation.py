@@ -81,9 +81,10 @@ class TestConfigValidationIntegration:
 
     def test_settings_validation_with_actual_env(self, monkeypatch):
         """Test that Settings.from_yaml works with valid environment variables."""
-        from src.models.config import Settings
-        import tempfile
         import os
+        import tempfile
+
+        from src.models.config import Settings
 
         # Set required environment variables
         monkeypatch.setenv("DIR_X_API_TOKEN", "test_token")
@@ -113,9 +114,10 @@ transcription:
 
     def test_settings_validation_with_empty_strings_raises_error(self, monkeypatch):
         """Test that empty string environment variables cause validation to fail."""
-        from src.models.config import Settings
-        import tempfile
         import os
+        import tempfile
+
+        from src.models.config import Settings
 
         # Set empty environment variables
         monkeypatch.setenv("DIR_X_API_TOKEN", "")
@@ -142,7 +144,8 @@ transcription:
             os.unlink(temp_path)
 
     def test_get_missing_required_vars_integration(self, monkeypatch):
-        """Test get_missing_required_vars and get_remediation_message functions with actual environment."""
+        """Test get_missing_required_vars and get_remediation_message functions
+        with actual environment."""
         import os
 
         # Clear environment variables
