@@ -9,8 +9,8 @@ Phase 1: Project Setup & Core Infrastructure
     -   [X] Configure logging
 2.  Configuration System
     -   [X] Implement config.yaml structure
-    -   [ ] Add secret management (keychain integration vs env vars)
-    -   Create connector configuration templates
+    -   [X] Add secret management (keychain integration vs env vars)
+    -   [ ] Create connector configuration templates
 
 Phase 2: Ingestion Components (Parallel Development)
 
