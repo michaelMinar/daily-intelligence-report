@@ -1,5 +1,5 @@
 # .github/workflows/ai-pr-review.yml
-name: AI PR Review (OpenAI o4-mini)
+name: AI code reviewers
 
 on:
   pull_request:
@@ -11,8 +11,11 @@ permissions:
   pull-requests: write
 
 jobs:
-  ai_code_review:
+  # ── 1 · OpenAI reviewer (existing) ────────────────────────────────
+  openai_review:
+    name: GPT‑4o‑mini review
     runs-on: ubuntu-latest
+    concurrency: openai-${{ github.event.pull_request.number }}
 
     steps:
       - uses: actions/checkout@v4
@@ -44,3 +47,18 @@ jobs:
             *.min.*
             venv/**
             logs/**
+
+  # ── 2 · Gemini reviewer (new) ─────────────────────────────────────
+  gemini_review:
+    name: Gemini‑1.5‑Pro review
+    runs-on: ubuntu-latest
+    concurrency: gemini-${{ github.event.pull_request.number }}
+
+    steps:
+      - uses: truongnh1992/gemini-ai-code-reviewer@v6.5.0
+        with:
+          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL:   gemini-2.5-pro-preview-05-06
+          EXCLUDE:        "package-lock.json,*.lock,*.min.*,venv/**,logs/**"
+          COMMENT_HEADER: "### 💎 Gemini review\n"
