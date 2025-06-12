@@ -1,21 +1,31 @@
 # .github/workflows/ai-pr-review.yml
-name: AI PR Review (OpenAI o4-mini)
+name: AI code reviewers
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [ main ]                 # only when PR targets main
     types:    [ opened, synchronize ]  # on create and on new commits
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
-  ai_code_review:
+  # ── 1 · OpenAI reviewer (existing) ────────────────────────────────
+  openai_review:
+    name: O4‑mini review
     runs-on: ubuntu-latest
+    concurrency: openai-${{ github.event.pull_request.number }}
+    if: github.event_name == 'pull_request_target'
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       - name: AI Code Review
         uses: AleksandrFurmenkovOfficial/ai-code-review@v0.8   # ✅ exact tag
@@ -34,8 +44,7 @@ jobs:
 
           # ───── Optional tuning  ─────
           system_message: |
-            You are D
-            aily Intelligence LLC’s senior reviewer.
+            You are Daily Intelligence LLC’s senior reviewer.
             - List security issues first, performance second, style last.
             - Keep it to ≤ 6 concise bullet points per file.
           exclude_paths: |
@@ -44,3 +53,21 @@ jobs:
             *.min.*
             venv/**
             logs/**
+
+  # ── 2 · Gemini reviewer (new) ─────────────────────────────────────
+  gemini_review:
+    name: Gemini‑2.5‑Pro review
+    runs-on: ubuntu-latest
+    concurrency: gemini-${{ github.event.issue.number || github.event.pull_request.number }}
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/gemini-review')
+
+    steps:
+      - uses: truongnh1992/gemini-ai-code-reviewer@v6.5.0
+        with:
+          GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL:   gemini-2.5-pro-preview-05-06
+          EXCLUDE:        "package-lock.json,*.lock,*.min.*,venv/**,logs/**"
+          COMMENT_HEADER: "### 💎 Gemini review\n"
