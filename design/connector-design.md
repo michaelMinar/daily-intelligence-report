@@ -76,7 +76,7 @@ graph LR
 
 ### 1. Configuration System
 
-Each connector type has a strongly-typed configuration model:
+Configuration uses a layered approach with file-based defaults and environment overrides:
 
 ```python
 # Base configuration interface
@@ -95,7 +95,21 @@ class RSSConfig(BaseConnectorConfig):
     exclude_keywords: Optional[List[str]]
 ```
 
-**Configuration Storage**: Stored in `sources.config_json` as validated JSON
+**Configuration Hierarchy**:
+```
+config/
+├── connectors/
+│   ├── defaults/
+│   │   ├── rss.yaml      # Default RSS settings
+│   │   ├── x_api.yaml    # Default X/Twitter settings
+│   │   └── ...
+│   └── config.yaml       # Main config with source definitions
+```
+
+**Loading Strategy**: 
+1. Load connector defaults from `config/connectors/defaults/{connector_type}.yaml`
+2. Apply source-specific overrides from main `config.yaml`
+3. Apply environment variable overrides for secrets
 
 ### 2. Base Connector Interface
 
@@ -105,8 +119,8 @@ All connectors implement this interface:
 class BaseConnector(ABC):
     """Abstract base class for content connectors."""
     
-    def __init__(self, source: Source, db: Database):
-        """Initialize with source configuration and database connection."""
+    def __init__(self, source: Source, db: Database, http_client: httpx.AsyncClient):
+        """Initialize with source configuration, database connection, and shared HTTP client."""
         
     @abstractmethod
     async def fetch_raw_data(self) -> AsyncIterator[Dict[str, Any]]:
@@ -120,7 +134,130 @@ class BaseConnector(ABC):
         """Execute fetch operation and return statistics."""
 ```
 
-### 3. Data Models
+### 3. Concurrency Control
+
+**ConnectorPool** manages concurrent execution with resource limits:
+
+```python
+class ConnectorPool:
+    """Manages concurrent connector execution with resource limits."""
+    
+    def __init__(self, max_concurrent: int = 10):
+        """
+        Initialize pool with concurrency limit.
+        
+        Args:
+            max_concurrent: Maximum simultaneous connector executions
+        """
+        self.semaphore = asyncio.Semaphore(max_concurrent)
+        self.http_client = httpx.AsyncClient(
+            timeout=httpx.Timeout(30.0),
+            limits=httpx.Limits(max_connections=100, max_keepalive_connections=20)
+        )
+    
+    async def run_connector(self, connector_class: Type[BaseConnector], 
+                          source: Source, db: Database) -> Dict[str, int]:
+        """Run a single connector with concurrency control."""
+        async with self.semaphore:
+            connector = connector_class(source, db, self.http_client)
+            return await connector.run()
+    
+    async def close(self):
+        """Clean up resources."""
+        await self.http_client.aclose()
+```
+
+**Usage Pattern**:
+```python
+async def run_all_connectors(sources: List[Source], db: Database):
+    pool = ConnectorPool(max_concurrent=10)
+    try:
+        tasks = [
+            pool.run_connector(get_connector_class(source.type), source, db)
+            for source in sources if source.active
+        ]
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+    finally:
+        await pool.close()
+```
+
+### 4. Error Handling & Resilience
+
+**Exception Hierarchy**:
+```python
+# src/connectors/exceptions.py
+class ConnectorError(Exception):
+    """Base exception for all connector errors."""
+    
+class RateLimitError(ConnectorError):
+    """Raised when API rate limit is exceeded."""
+    def __init__(self, retry_after: Optional[int] = None):
+        self.retry_after = retry_after
+        
+class AuthenticationError(ConnectorError):
+    """Raised when authentication fails."""
+    
+class NetworkError(ConnectorError):
+    """Raised for network-related failures."""
+    
+class ParseError(ConnectorError):
+    """Raised when content parsing fails."""
+```
+
+**Circuit Breaker Pattern**:
+```python
+# src/connectors/resilience.py
+class CircuitBreaker:
+    """Circuit breaker for preventing cascading failures."""
+    
+    def __init__(self, failure_threshold: int = 5, recovery_timeout: int = 60):
+        """
+        Initialize circuit breaker.
+        
+        Args:
+            failure_threshold: Failures before opening circuit
+            recovery_timeout: Seconds to wait before retry
+        """
+        self.failure_threshold = failure_threshold
+        self.recovery_timeout = recovery_timeout
+        self.failure_count = 0
+        self.last_failure_time: Optional[float] = None
+        self.state = "closed"  # States: closed, open, half-open
+    
+    def call(self, func: Callable) -> Any:
+        """Execute function with circuit breaker protection."""
+        
+    def record_success(self):
+        """Reset failure count on success."""
+        
+    def record_failure(self):
+        """Increment failure count and possibly open circuit."""
+```
+
+**Retry Strategy**:
+```python
+# Using tenacity library
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+
+# Different retry strategies for different errors
+@retry(
+    retry=retry_if_exception_type(NetworkError),
+    stop=stop_after_attempt(3),
+    wait=wait_exponential(multiplier=1, min=4, max=10)
+)
+async def network_operation():
+    pass
+
+@retry(
+    retry=retry_if_exception_type(RateLimitError),
+    stop=stop_after_attempt(1),
+    wait=wait_fixed(lambda e: e.last_attempt.outcome.exception().retry_after or 60)
+)
+async def rate_limited_operation():
+    pass
+```
+
+### 5. Data Models
 
 **Source Model** (existing, enhanced):
 ```python
@@ -129,12 +266,14 @@ class Source(BaseModel):
     type: SourceType  # Enum: RSS, TWITTER, EMAIL, PODCAST, YOUTUBE
     url: str
     name: str
-    config_json: Optional[Dict[str, Any]]
+    config: Optional[Dict[str, Any]]  # Loaded from YAML config
     active: bool
     
     @property
     def typed_config(self) -> BaseConnectorConfig:
         """Return strongly-typed configuration object."""
+        config_class = get_config_class(self.type)
+        return config_class(**self.config) if self.config else config_class()
 ```
 
 **Post Model** (existing):
@@ -149,7 +288,7 @@ class Post(BaseModel):
     metadata_json: Optional[Dict[str, Any]]
 ```
 
-### 4. Connector Registry
+### 6. Connector Registry
 
 Dynamic connector discovery and instantiation:
 
@@ -157,11 +296,46 @@ Dynamic connector discovery and instantiation:
 CONNECTOR_REGISTRY: Dict[SourceType, Type[BaseConnector]] = {
     SourceType.RSS: RSSConnector,
     SourceType.TWITTER: XAPIConnector,
-    # ... etc
+    SourceType.EMAIL: EmailConnector,
+    SourceType.PODCAST: PodcastConnector,
+    SourceType.YOUTUBE: YouTubeConnector,
 }
 
 def get_connector_class(source_type: SourceType) -> Type[BaseConnector]:
     """Factory method to get connector class by source type."""
+    if source_type not in CONNECTOR_REGISTRY:
+        raise ValueError(f"No connector registered for source type: {source_type}")
+    return CONNECTOR_REGISTRY[source_type]
+```
+
+### 7. Configuration Loader
+
+```python
+# src/intel/utils/config_loader.py
+def load_connector_config(source_type: SourceType, source_config: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Load configuration with defaults and overrides.
+    
+    Args:
+        source_type: Type of connector
+        source_config: Source-specific config overrides
+        
+    Returns:
+        Merged configuration dictionary
+    """
+    # 1. Load defaults from config/connectors/defaults/{source_type}.yaml
+    default_path = f"config/connectors/defaults/{source_type.value}.yaml"
+    with open(default_path) as f:
+        defaults = yaml.safe_load(f)
+    
+    # 2. Merge with source-specific overrides
+    config = {**defaults, **source_config}
+    
+    # 3. Apply environment variable overrides (for secrets)
+    # E.g., ${X_BEARER_TOKEN} in config becomes os.getenv('X_BEARER_TOKEN')
+    config = expand_env_vars(config)
+    
+    return config
 ```
 
 ## Implementation Requirements
@@ -169,11 +343,21 @@ def get_connector_class(source_type: SourceType) -> Type[BaseConnector]:
 ### Required Functionality
 
 1. **Deduplication**: Use content_hash to prevent duplicate storage
-2. **Error Handling**: Graceful degradation with comprehensive logging
-3. **Rate Limiting**: Respect API limits and configured intervals
-4. **Async Operations**: All I/O must be async for concurrent execution
-5. **Progress Tracking**: Optional progress reporting interface
-6. **Statistics**: Track fetched/new/duplicate/error counts
+2. **Error Handling**: Structured exceptions with circuit breaker pattern
+3. **Rate Limiting**: Respect API limits with intelligent retry strategies
+4. **Async Operations**: All I/O must be async with controlled concurrency
+5. **Resource Management**: Shared HTTP client with connection pooling
+6. **Statistics**: Track fetched/new/duplicate/error counts per source
+
+### Required Libraries
+
+```toml
+# pyproject.toml additions
+[tool.poetry.dependencies]
+httpx = "^0.27.0"          # Async HTTP client with connection pooling
+tenacity = "^8.2.3"        # Retry logic with backoff strategies
+pyyaml = "^6.0.1"          # YAML configuration parsing
+```
 
 ### Quality Attributes
 
@@ -227,15 +411,45 @@ class Database:
 ```python
 # Example usage in daily_report.py
 async def run_connectors(db: Database):
-    sources = await db.get_active_sources()
-    tasks = []
+    # Load sources from config
+    sources = load_sources_from_config()
     
-    for source in sources:
-        connector_class = get_connector_class(source.type)
-        connector = connector_class(source, db)
-        tasks.append(connector.run())
+    # Create connector pool with concurrency limit
+    pool = ConnectorPool(max_concurrent=10)
     
-    results = await asyncio.gather(*tasks)
+    try:
+        # Create circuit breakers per source
+        circuit_breakers = {
+            source.id: CircuitBreaker() for source in sources
+        }
+        
+        # Run all connectors with error handling
+        tasks = []
+        for source in sources:
+            if source.active:
+                task = pool.run_connector(
+                    get_connector_class(source.type), 
+                    source, 
+                    db
+                )
+                # Wrap with circuit breaker
+                protected_task = circuit_breakers[source.id].call(task)
+                tasks.append(protected_task)
+        
+        results = await asyncio.gather(*tasks, return_exceptions=True)
+        
+        # Process results
+        for source, result in zip(sources, results):
+            if isinstance(result, Exception):
+                logger.error(f"Failed to fetch {source.name}: {result}")
+                if isinstance(result, AuthenticationError):
+                    # Mark source as needing attention
+                    await db.update_source_status(source.id, "auth_failed")
+            else:
+                logger.info(f"Fetched {source.name}: {result}")
+                
+    finally:
+        await pool.close()
 ```
 
 ## Testing Strategy
@@ -295,6 +509,9 @@ src/
 ├── connectors/
 │   ├── __init__.py          # Registry and factory
 │   ├── base.py              # BaseConnector class
+│   ├── exceptions.py        # Custom exception hierarchy
+│   ├── resilience.py        # CircuitBreaker implementation
+│   ├── pool.py              # ConnectorPool for concurrency
 │   ├── configs/
 │   │   ├── __init__.py      # Config factory
 │   │   ├── base.py          # BaseConnectorConfig
@@ -308,7 +525,53 @@ src/
 │   ├── email.py             # EmailConnector
 │   ├── podcast.py           # PodcastConnector
 │   └── youtube.py           # YouTubeConnector
-└── models/
-    ├── source.py            # Enhanced with typed_config
-    └── post.py              # Existing Post model
+├── models/
+│   ├── source.py            # Enhanced with typed_config
+│   └── post.py              # Existing Post model
+└── intel/
+    └── utils/
+        └── config_loader.py # Configuration loading logic
+
+config/
+├── connectors/
+│   └── defaults/            # Default configs per connector type
+│       ├── rss.yaml
+│       ├── x_api.yaml
+│       ├── email.yaml
+│       ├── podcast.yaml
+│       └── youtube.yaml
+└── config.yaml              # Main configuration with sources
+```
+
+## Example Configuration Files
+
+**config/connectors/defaults/rss.yaml**:
+```yaml
+# Default configuration for RSS connectors
+enabled: true
+fetch_interval_minutes: 60
+max_items_per_fetch: 50
+retry_attempts: 3
+timeout_seconds: 30
+parse_full_content: false
+filter_keywords: null
+exclude_keywords: null
+```
+
+**config/config.yaml** (sources section):
+```yaml
+sources:
+  - type: rss
+    name: "TechCrunch"
+    url: "https://techcrunch.com/feed/"
+    config:
+      parse_full_content: true
+      filter_keywords: ["AI", "machine learning"]
+      
+  - type: twitter
+    name: "Elon Musk"
+    url: "https://twitter.com/elonmusk"
+    config:
+      max_tweets_per_user: 20
+      include_replies: false
 ```
