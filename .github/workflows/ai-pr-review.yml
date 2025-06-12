@@ -37,8 +37,7 @@ jobs:
 
           # ───── Optional tuning  ─────
           system_message: |
-            You are D
-            aily Intelligence LLC’s senior reviewer.
+            You are Daily Intelligence LLC’s senior reviewer.
             - List security issues first, performance second, style last.
             - Keep it to ≤ 6 concise bullet points per file.
           exclude_paths: |
@@ -50,7 +49,7 @@ jobs:
 
   # ── 2 · Gemini reviewer (new) ─────────────────────────────────────
   gemini_review:
-    name: Gemini‑1.5‑Pro review
+    name: Gemini‑2.5‑Pro review
     runs-on: ubuntu-latest
     concurrency: gemini-${{ github.event.pull_request.number }}
 
