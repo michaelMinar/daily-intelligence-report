@@ -2,7 +2,7 @@
 name: AI code reviewers
 
 on:
-  pull_request:
+  pull_request_target:
     branches: [ main ]                 # only when PR targets main
     types:    [ opened, synchronize ]  # on create and on new commits
   issue_comment:
@@ -11,16 +11,21 @@ on:
 permissions:
   contents: read
   pull-requests: write
+  issues: write
 
 jobs:
   # ── 1 · OpenAI reviewer (existing) ────────────────────────────────
   openai_review:
-    name: GPT‑4o‑mini review
+    name: O4‑mini review
     runs-on: ubuntu-latest
     concurrency: openai-${{ github.event.pull_request.number }}
+    if: github.event_name == 'pull_request_target'
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
 
       - name: AI Code Review
         uses: AleksandrFurmenkovOfficial/ai-code-review@v0.8   # ✅ exact tag
@@ -53,7 +58,7 @@ jobs:
   gemini_review:
     name: Gemini‑2.5‑Pro review
     runs-on: ubuntu-latest
-    concurrency: gemini-${{ github.event.pull_request.number }}
+    concurrency: gemini-${{ github.event.issue.number || github.event.pull_request.number }}
     if: |
       github.event.issue.pull_request &&
       contains(github.event.comment.body, '/gemini-review')
