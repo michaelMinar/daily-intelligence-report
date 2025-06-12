@@ -53,6 +53,7 @@ jobs:
             *.min.*
             venv/**
             logs/**
+            design/archive/**
 
   # ── 2 · Gemini reviewer (new) ─────────────────────────────────────
   gemini_review:
@@ -69,5 +70,5 @@ jobs:
           GITHUB_TOKEN:   ${{ secrets.GITHUB_TOKEN }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL:   gemini-2.5-pro-preview-05-06
-          EXCLUDE:        "package-lock.json,*.lock,*.min.*,venv/**,logs/**"
+          EXCLUDE:        "package-lock.json,*.lock,*.min.*,venv/**,logs/**,design/archive/**"
           COMMENT_HEADER: "### 💎 Gemini review\n"
