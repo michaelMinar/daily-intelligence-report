@@ -5,6 +5,8 @@ on:
   pull_request:
     branches: [ main ]                 # only when PR targets main
     types:    [ opened, synchronize ]  # on create and on new commits
+  issue_comment:
+    types: [created]
 
 permissions:
   contents: read
@@ -52,6 +54,9 @@ jobs:
     name: Gemini‑2.5‑Pro review
     runs-on: ubuntu-latest
     concurrency: gemini-${{ github.event.pull_request.number }}
+    if: |
+      github.event.issue.pull_request &&
+      contains(github.event.comment.body, '/gemini-review')
 
     steps:
       - uses: truongnh1992/gemini-ai-code-reviewer@v6.5.0
