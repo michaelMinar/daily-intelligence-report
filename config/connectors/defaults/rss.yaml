@@ -1,0 +1,8 @@
+enabled: true
+fetch_interval_minutes: 60
+max_items_per_fetch: 50
+retry_attempts: 3
+timeout_seconds: 30
+parse_full_content: false
+filter_keywords: null
+exclude_keywords: null

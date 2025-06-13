@@ -10,14 +10,14 @@ Phase 1: Project Setup & Core Infrastructure
 2.  Configuration System
     -   [X] Implement config.yaml structure
     -   [X] Add secret management (keychain integration vs env vars)
-    -   [ ] Create connector configuration templates
+    -   [X] Create connector configuration templates
 
 Phase 2: Ingestion Components (Parallel Development)
 
 1.  RSS Connector
-    -   Implement basic RSS fetching
-    -   Add retry/backoff mechanisms
-    -   Create normalize-to-Post function
+    -   [ ] Implement basic RSS fetching
+    -   [ ] Add retry/backoff mechanisms
+    -   [ ] Create normalize-to-Post function
 2.  X/Twitter Connector
     -   Implement API authentication
     -   Add rate limiting to respect API caps
