@@ -1,78 +1,35 @@
-Connector Design Audit
+### Suggestions for Improved Robustness
+1. Promote "Incremental Fetching" to a Core Requirement
+   - Observation: The document lists "Incremental Fetching" as a future enhancement. However, for many sources (especially high-volume ones like RSS or Twitter), fetching the same max_items_per_fetch on every run is inefficient and can lead to hitting rate limits unnecessarily.
+   - Suggestion: This should be a core part of the BaseConnector contract.
+Modify the run or fetch_raw_data method to accept a last_seen_id or last_fetch_timestamp.
+   - The core pipeline would be responsible for storing and retrieving this "high-water mark" for each source.
+   - The BaseConnector.run method could look like this:
 
-Executive Summary
+```python
+async def run(self) -> Dict[str, int]:
+	last_state = await self.db.get_source_fetch_state(self.source.id) # e.g., {'last_seen_id': 'xyz'}
+    # ... fetch logic using last_state
+    new_items = await self.fetch_and_process(last_state)
+    # ...
+    await self.db.update_source_fetch_state(self.source.id, new_state)
+    return stats
+	
+	- This dramatically improves efficiency and is a hallmark of a robust data ingestion system.
 
-This audit evaluates the proposed pluggable connector system design, highlighting its solid foundations and identifying areas where refinement can strengthen cleanliness, extensibility, security, and maintainability. Overall, the design demonstrates a clear separation of concerns and a strong focus on type safety and asynchronous performance, but it can benefit from deeper considerations around dynamic plugin discovery, configuration management, resource control, resilient error handling, and developer ergonomics.
-
-⸻
-
-Strengths and Solid Elements
-
-1. Modular, Pluggable Architecture
-	•	Single Responsibility & Open/Closed: Each connector implements a narrow interface (BaseConnector) and can be extended without modifying core logic, aligning well with SRP and OCP.
-	•	Interface Segregation & Dependency Inversion: Connectors depend on the Database and Post abstractions rather than concrete implementations, enabling easier testing and mocking.
-
-2. Type Safety and Configuration Validation
-	•	Pydantic Models: Strongly typed BaseConnectorConfig subclasses ensure configuration fields are validated at load time, reducing runtime surprises.
-	•	Typed Config Access: The Source.typed_config property centralizes conversion of raw JSON into typed models.
-
-3. Asynchronous I/O and Performance Focus
-	•	Async Fetch Loop: Exposing fetch_raw_data as an AsyncIterator and using asyncio.gather supports concurrent source ingestion.
-	•	Performance Targets: Explicit goal of 1000+ items/minute encourages the use of batch operations and non-blocking I/O.
-
-4. Clear Data Flow and Deduplication
-	•	Content Hashing: SHA-256 deduplication logic is clearly integrated into the pipeline to avoid duplicate storage.
-	•	Mermaid Diagrams: Visual diagrams effectively communicate high-level architecture and data flow.
-
-5. Security Awareness
-	•	Credentials Handling: Emphasis on environment variables and keychain integration avoids hardcoding secrets.
-	•	Input Validation: Sanitizing and validating all external data through Pydantic limits injection risks.
-
-⸻
-
-Areas for Improvement and Recommendations
-
-1. Configuration Management & Storage
-	•	Current Approach: Storing JSON config in sources.config_json in the database.
-	•	Recommendations:
-	•	Declarative Files: Support loading from YAML/JSON files on disk (e.g., via Hydra or Dynaconf) for easier version control and environment overlays.
-
-2. Concurrency Control & Resource Management
-	•	Current Approach: asyncio.gather(*tasks) may saturate connections when many sources run simultaneously.
-	•	Recommendations:
-	•	Semaphore/Task Groups: Use asyncio.Semaphore or Python 3.11 TaskGroup with bounded concurrency to cap simultaneous fetches.
-	•	HTTP Client Reuse: Inject a shared httpx.AsyncClient instance to each connector to benefit from connection pooling and timeouts.
-	•	Graceful Shutdown: Implement cancellation tokens or context managers to cleanly abort in-flight fetches.
-
-3. Error Handling & Resilience
-	•	Current Approach: Retry logic and logging are noted, but no structured resilience patterns.
-	•	Recommendations:
-	•	Circuit Breakers: Introduce a circuit-breaker pattern per source type to back off after repeated failures.
-	•	Categorized Exceptions: Define custom exception types (e.g., RateLimitError, AuthError) to drive differentiated retry strategies.
-	•	Bulkhead Isolation: Ensure failures in one connector cannot cascade by isolating connectors into separate worker pools.
-
-4. Testing, Observability & Monitoring
-	•	Current Plan: Unit, integration, and contract tests cover core functionality.
-	•	Recommendations:
-	•	Performance Benchmarks: Add automated benchmarks (e.g., via pytest-benchmark) to validate throughput requirements.
-	•	Metrics & Tracing: Integrate telemetry (Prometheus, OpenTelemetry) to track per-connector success rates, latencies, and error counts.
-
-5. Maintainability & Developer Experience
-	•	Current State: Comprehensive documentation and clear file structure.
-	•	Recommendations:
-	•	Docstring Standards: Enforce docstring coverage for all public methods and data models.
-	•	CLI Tooling: Provide a command-line interface (click or typer) to run individual connectors for debugging.
-	•	Schema Versioning: Include version metadata in connector configs and database migrations to assist future upgrades.
-
-⸻
-
-Future Considerations
-	•	Dynamic Reload: Implement a watch or refresh mechanism to pick up config changes without restarting.
-	•   Secret Integration: Integrate with a secrets manager (Vault, AWS Secrets Manager) rather than relying solely on env vars or keychain for rotation and audit logging.
-	•	Orchestration Frameworks: Evaluate frameworks such as Prefect or Dagster for built-in scheduling, retries, and visualization, reducing custom pipeline code.
-	•	Batch Deduplication Cache: Layer an in-memory cache (LRU or Bloom filter) before DB dedup checks to reduce round trips under high load.
-	•	Plugin UI: For self-service connector addition, build a small UI to define new connector configs and test connectivity interactively.
-
-Conclusion
-
-The connector design demonstrates strong architectural foundations with clear attention to separation of concerns, type safety, and performance. By adopting dynamic plugin loading, improving configuration management practices, tightening concurrency controls, and enhancing resilience and observability, the system can achieve greater robustness, security, and developer productivity as it scales to more sources and evolving requirements.
+2. Clarify the content_hash Scope
+   - Observation: The Post model has a content_hash for deduplication. The document implies this is a hash of the content field.
+   - Suggestion: Be explicit about what constitutes a unique post. Is it just the content? Or is it a combination of source_id, title, and content? A hash of only the content could lead to incorrect-but-plausible deduplication if two different sources syndicate the same article. A more robust hash might be: sha256(f"{post.source_id}:{post.url_or_guid}:{post.content}")
+3. Specify Async Library for Email Connector
+   - Observation: The "Email Connector" spec lists imaplib as a dependency. imaplib is a synchronous library and will block the entire asyncio event loop, defeating the purpose of the async architecture.
+   - Suggestion: Explicitly require an async IMAP library, such as aioimaplib. This is a critical detail for maintaining the performance and responsiveness of the system.
+   
+### Suggestions for Improved Simplicity & Maintainability
+1. Implement a Template Method Pattern in BaseConnector
+   - Observation: The BaseConnector defines fetch_raw_data and normalize_to_post as abstract methods, but the run method is also abstract. This forces every single connector to re-implement the same orchestration logic: fetch -> normalize -> check duplicate -> save. This is repetitive and error-prone.
+   - Suggestion: Implement the run method in the BaseConnector itself. This change makes individual connectors incredibly simple: they only need to provide the fetch and normalize logic, and the base class handles the rest.
+2. Clarify the Role of Source.url
+   - Observation: The Source model has a url field, which makes perfect sense for RSS, Podcasts, and YouTube. However, for sources like X/Twitter (handle) or Email (server address), url is ambiguous. The example config for Twitter shows a twitter.com URL.
+   - Suggestion: Rename url to a more generic term like identifier or target.
+	 - Source.identifier: str
+	 - This avoids confusion and makes it clear that the field's meaning is interpreted by the specific connector (e.g., for RSS it's a URL, for Twitter it's a handle, for Email it's user@imap.server.com).

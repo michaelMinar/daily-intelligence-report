@@ -54,7 +54,7 @@ graph LR
 graph LR
     A[Connector fetches data] --> B[Normalize to Post model]
     B --> C[Generate content_hash]
-    C --> D{Duplicate check}
+    C --> D{Duplicate check using composite hash}
     D -->|New content| E[Insert into 'posts' table]
     D -->|Duplicate| F[Skip/Log duplicate]
     E --> G[Trigger updates posts_fts for search]
@@ -62,6 +62,12 @@ graph LR
     H --> I[Store in 'embeddings' table]
     I --> J[Clustering pipeline]
     J --> K[Update 'clusters' & 'post_clusters' tables]
+
+**Deduplication Strategy**:
+- **Composite Hash**: Combines source_id, source_guid/URL, and content
+- **Cross-Source Content**: Same article from different sources creates separate entries
+- **Within-Source Deduplication**: Prevents re-processing identical content from same source
+- **Fallback Identifiers**: Uses source_guid (preferred) → URL → content-only as hash components
 ```
 
 ## Design Principles
@@ -117,22 +123,115 @@ All connectors implement this interface:
 
 ```python
 class BaseConnector(ABC):
-    """Abstract base class for content connectors."""
+    """Abstract base class for content connectors implementing Template Method Pattern."""
     
     def __init__(self, source: Source, db: Database, http_client: httpx.AsyncClient):
         """Initialize with source configuration, database connection, and shared HTTP client."""
+        self.source = source
+        self.db = db
+        self.http_client = http_client
+        self.logger = logging.getLogger(f"{self.__class__.__name__}:{source.name}")
         
     @abstractmethod
-    async def fetch_raw_data(self) -> AsyncIterator[Dict[str, Any]]:
-        """Yield raw data items from the source."""
+    async def fetch_raw_data(self, fetch_state: Optional[Dict[str, Any]] = None) -> AsyncIterator[Dict[str, Any]]:
+        """
+        Yield raw data items from the source.
+        
+        Args:
+            fetch_state: Previous fetch state for incremental fetching
+                        (e.g., {'last_seen_id': 'xyz', 'last_fetch_timestamp': '2024-01-01T00:00:00Z'})
+        """
         
     @abstractmethod
     def normalize_to_post(self, raw_data: Dict[str, Any]) -> Optional[Post]:
         """Convert raw data to normalized Post model."""
         
+    def extract_fetch_state(self, post: Post) -> Dict[str, Any]:
+        """
+        Extract fetch state from a processed post for incremental fetching.
+        Override in subclasses for source-specific state extraction.
+        
+        Args:
+            post: Processed post object
+            
+        Returns:
+            State dictionary for next fetch
+        """
+        return {
+            'last_seen_id': post.source_guid or post.url,
+            'last_fetch_timestamp': datetime.utcnow().isoformat()
+        }
+    
     async def run(self) -> Dict[str, int]:
-        """Execute fetch operation and return statistics."""
+        """
+        Execute fetch operation with standardized orchestration.
+        
+        Template Method Pattern: Defines the algorithm structure while allowing
+        subclasses to customize specific steps (fetch_raw_data, normalize_to_post).
+        
+        Returns:
+            Statistics dictionary with counts for fetched/new/duplicate/error items
+        """
+        stats = {
+            'fetched': 0,
+            'new': 0, 
+            'duplicate': 0,
+            'error': 0
+        }
+        
+        try:
+            # 1. Get previous fetch state
+            fetch_state = await self.db.get_source_fetch_state(self.source.id)
+            
+            # 2. Fetch raw data with incremental support
+            last_processed_post = None
+            async for raw_item in self.fetch_raw_data(fetch_state):
+                stats['fetched'] += 1
+                
+                try:
+                    # 3. Normalize to Post model
+                    post = self.normalize_to_post(raw_item)
+                    if not post:
+                        continue
+                        
+                    # 4. Set source_id and generate composite hash
+                    post.source_id = self.source.id
+                    post.content_hash = Post.generate_content_hash(
+                        post.source_id, post.content, post.url, post.source_guid
+                    )
+                    
+                    # 5. Check for duplicates
+                    if await self.db.post_exists_by_hash(post.content_hash):
+                        stats['duplicate'] += 1
+                        continue
+                        
+                    # 6. Insert new post
+                    await self.db.insert_post(post)
+                    stats['new'] += 1
+                    last_processed_post = post
+                    
+                except Exception as e:
+                    self.logger.error(f"Error processing item: {e}")
+                    stats['error'] += 1
+                    
+            # 7. Update fetch state if we processed any items
+            if last_processed_post:
+                new_state = self.extract_fetch_state(last_processed_post)
+                await self.db.update_source_fetch_state(self.source.id, new_state)
+                
+        except Exception as e:
+            self.logger.error(f"Fatal error in connector run: {e}")
+            raise
+            
+        return stats
 ```
+
+**Template Method Pattern Benefits**:
+- **Standardized Flow**: All connectors follow identical orchestration (fetch → normalize → dedupe → save)
+- **Reduced Complexity**: Individual connectors only implement 2 abstract methods
+- **Consistent Error Handling**: Unified error handling and statistics tracking
+- **Incremental Fetching**: Built-in support with customizable state extraction
+- **Maintainability**: Core logic changes automatically apply to all connectors
 
 ### 3. Concurrency Control
 
@@ -264,7 +363,7 @@ async def rate_limited_operation():
 class Source(BaseModel):
     id: Optional[int]
     type: SourceType  # Enum: RSS, TWITTER, EMAIL, PODCAST, YOUTUBE
-    url: str
+    identifier: str  # Generic identifier: URL for RSS/YouTube, handle for Twitter, email for IMAP
     name: str
     config: Optional[Dict[str, Any]]  # Loaded from YAML config
     active: bool
@@ -276,7 +375,7 @@ class Source(BaseModel):
         return config_class(**self.config) if self.config else config_class()
 ```
 
-**Post Model** (existing):
+**Post Model** (existing, enhanced):
 ```python
 class Post(BaseModel):
     source_id: int
@@ -284,8 +383,33 @@ class Post(BaseModel):
     content: str
     url: Optional[str]
     published_at: Optional[datetime]
-    content_hash: str  # SHA-256 for deduplication
+    content_hash: str  # Composite hash for robust deduplication
+    source_guid: Optional[str]  # Original source identifier (RSS GUID, Tweet ID, etc.)
     metadata_json: Optional[Dict[str, Any]]
+    
+    @classmethod
+    def generate_content_hash(cls, source_id: int, content: str, 
+                            url: Optional[str] = None, 
+                            source_guid: Optional[str] = None) -> str:
+        """
+        Generate composite hash for robust deduplication.
+        
+        Combines source_id, content, and available identifiers to prevent
+        false deduplication when the same content appears across different sources.
+        
+        Args:
+            source_id: ID of the source
+            content: Main content text
+            url: Content URL if available
+            source_guid: Source-specific identifier (RSS GUID, Tweet ID, etc.)
+            
+        Returns:
+            SHA-256 hash string for deduplication
+        """
+        # Use source_guid if available (most reliable), otherwise fall back to URL
+        identifier = source_guid or url or ""
+        hash_input = f"{source_id}:{identifier}:{content}"
+        return hashlib.sha256(hash_input.encode('utf-8')).hexdigest()
 ```
 
 ### 6. Connector Registry
@@ -306,6 +430,44 @@ def get_connector_class(source_type: SourceType) -> Type[BaseConnector]:
     if source_type not in CONNECTOR_REGISTRY:
         raise ValueError(f"No connector registered for source type: {source_type}")
     return CONNECTOR_REGISTRY[source_type]
+```
+
+### 7. Fetch State Management
+
+Connectors support incremental fetching to avoid re-processing content and respect rate limits:
+
+```python
+class FetchState(BaseModel):
+    """Represents the state of the last successful fetch for a source."""
+    source_id: int
+    last_fetch_timestamp: datetime
+    last_seen_id: Optional[str] = None  # Source-specific identifier
+    metadata: Optional[Dict[str, Any]] = None  # Connector-specific state
+    
+    class Config:
+        json_encoders = {
+            datetime: lambda v: v.isoformat()
+        }
+```
+
+**Usage in connectors:**
+```python
+# RSS Connector example
+async def fetch_raw_data(self, fetch_state: Optional[Dict[str, Any]] = None) -> AsyncIterator[Dict[str, Any]]:
+    last_seen_guid = fetch_state.get('last_seen_id') if fetch_state else None
+    
+    async for entry in self._parse_feed():
+        if last_seen_guid and entry['guid'] == last_seen_guid:
+            break  # Stop at previously seen content
+        yield entry
+
+# Twitter Connector example  
+async def fetch_raw_data(self, fetch_state: Optional[Dict[str, Any]] = None) -> AsyncIterator[Dict[str, Any]]:
+    since_id = fetch_state.get('last_seen_id') if fetch_state else None
+    params = {'since_id': since_id} if since_id else {}
+    
+    async for tweet in self._fetch_tweets(params):
+        yield tweet
 ```
 
 ### 7. Configuration Loader
@@ -342,12 +504,13 @@ def load_connector_config(source_type: SourceType, source_config: Dict[str, Any]
 
 ### Required Functionality
 
-1. **Deduplication**: Use content_hash to prevent duplicate storage
+1. **Deduplication**: Use composite content_hash (source_id + identifier + content) to prevent duplicate storage while allowing same content from different sources
 2. **Error Handling**: Structured exceptions with circuit breaker pattern
 3. **Rate Limiting**: Respect API limits with intelligent retry strategies
 4. **Async Operations**: All I/O must be async with controlled concurrency
 5. **Resource Management**: Shared HTTP client with connection pooling
 6. **Statistics**: Track fetched/new/duplicate/error counts per source
+7. **Incremental Fetching**: Track fetch state per source to avoid re-processing content
 
 ### Required Libraries
 
@@ -357,6 +520,7 @@ def load_connector_config(source_type: SourceType, source_config: Dict[str, Any]
 httpx = "^0.27.0"          # Async HTTP client with connection pooling
 tenacity = "^8.2.3"        # Retry logic with backoff strategies
 pyyaml = "^6.0.1"          # YAML configuration parsing
+aioimaplib = "^1.0.1"      # Async IMAP client for email connector
 ```
 
 ### Quality Attributes
@@ -373,29 +537,34 @@ pyyaml = "^6.0.1"          # YAML configuration parsing
 
 ### RSS Connector
 - **Input**: RSS/Atom feed URLs
-- **Features**: Full content extraction, keyword filtering
+- **Features**: Full content extraction, keyword filtering, incremental fetching via GUID tracking
 - **Dependencies**: feedparser, httpx
+- **Incremental Strategy**: Track last seen GUID, process feeds in reverse chronological order
 
 ### X/Twitter Connector
-- **Input**: Twitter handles
-- **Features**: Tweet filtering, reply/retweet handling
+- **Input**: Twitter handles (without @ prefix)
+- **Features**: Tweet filtering, reply/retweet handling, incremental fetching via since_id
 - **Dependencies**: httpx, Bearer token auth
 - **Constraints**: API rate limits (Basic tier: 10k reads/month)
+- **Incremental Strategy**: Use Twitter API since_id parameter
 
 ### Email Connector
-- **Input**: IMAP server credentials
-- **Features**: Folder selection, attachment handling, sender filtering
-- **Dependencies**: imaplib, email parser
+- **Input**: IMAP server credentials and email addresses
+- **Features**: Folder selection, attachment handling, sender filtering, incremental fetching via UID tracking
+- **Dependencies**: aioimaplib (async IMAP), email parser
+- **Incremental Strategy**: Track last processed UID per folder
 
 ### Podcast Connector
 - **Input**: Podcast RSS feeds
-- **Features**: Audio download, transcription integration
-- **Dependencies**: feedparser, transcription service
+- **Features**: Episode filtering, metadata extraction, incremental fetching via episode GUID
+- **Dependencies**: feedparser, httpx, transcription service integration
+- **Incremental Strategy**: Track last seen episode GUID
 
 ### YouTube Connector
-- **Input**: Channel IDs
-- **Features**: Transcript extraction, video metadata
-- **Dependencies**: youtube-transcript-api or API client
+- **Input**: Channel IDs or usernames
+- **Features**: Video filtering, transcript extraction, metadata parsing, incremental fetching via video ID
+- **Dependencies**: httpx, youtube-transcript-api or YouTube Data API
+- **Incremental Strategy**: Track last processed video ID, use publishedAfter parameter
 
 ## Integration Points
 
@@ -405,6 +574,60 @@ class Database:
     async def post_exists_by_hash(self, content_hash: str) -> bool
     async def insert_post(self, post: Post) -> int
     async def get_active_sources(self) -> List[Source]
+    
+    # New methods for fetch state management
+    async def get_source_fetch_state(self, source_id: int) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve the last fetch state for a source.
+        
+        Args:
+            source_id: ID of the source
+            
+        Returns:
+            Fetch state dictionary or None if no previous state exists
+        """
+        
+    async def update_source_fetch_state(self, source_id: int, fetch_state: Dict[str, Any]) -> None:
+        """
+        Update the fetch state for a source.
+        
+        Args:
+            source_id: ID of the source
+            fetch_state: New fetch state to store
+        """
+        
+    async def update_source_status(self, source_id: int, status: str) -> None:
+        """
+        Update the status of a source (e.g., 'auth_failed', 'active').
+        
+        Args:
+            source_id: ID of the source
+            status: New status string
+        """
+```
+
+### Required Database Schema Changes
+
+To support the new functionality, the following schema changes are required:
+
+```sql
+-- New table for tracking fetch state per source
+CREATE TABLE source_fetch_states (
+    source_id INTEGER PRIMARY KEY,
+    fetch_state TEXT NOT NULL,  -- JSON string of fetch state
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (source_id) REFERENCES sources (id)
+);
+
+-- Add status column to sources table
+ALTER TABLE sources ADD COLUMN status TEXT DEFAULT 'active';
+
+-- Add source_guid column to posts table for better deduplication
+ALTER TABLE posts ADD COLUMN source_guid TEXT;
+
+-- Index for faster hash lookups
+CREATE INDEX idx_posts_content_hash ON posts (content_hash);
+CREATE INDEX idx_posts_source_guid ON posts (source_guid);
 ```
 
 ### Pipeline Integration
@@ -481,7 +704,6 @@ async def run_connectors(db: Database):
 
 1. **Webhook Support**: Push-based content ingestion
 2. **Custom Connectors**: Plugin system for user-defined sources
-3. **Incremental Fetching**: Track last fetch timestamp
 4. **Content Enrichment**: Extract entities, sentiment
 5. **Monitoring Dashboard**: Real-time connector status
 
@@ -501,6 +723,12 @@ Since this is a greenfield implementation:
 - **Performance**: < 5 second latency per source
 - **Maintainability**: New connector implementation < 200 LOC
 - **Adoption**: Successfully ingesting from 50+ sources
+
+**Async Library Requirements**:
+- All connectors must use async-compatible libraries
+- Email Connector: `aioimaplib` instead of synchronous `imaplib`
+- HTTP operations: `httpx` for all network requests
+- Database operations: async database drivers only
 
 ## Appendix: File Structure
 
@@ -563,15 +791,22 @@ exclude_keywords: null
 sources:
   - type: rss
     name: "TechCrunch"
-    url: "https://techcrunch.com/feed/"
+    identifier: "https://techcrunch.com/feed/"
     config:
       parse_full_content: true
       filter_keywords: ["AI", "machine learning"]
       
   - type: twitter
     name: "Elon Musk"
-    url: "https://twitter.com/elonmusk"
+    identifier: "elonmusk"  # Twitter handle without @
     config:
       max_tweets_per_user: 20
       include_replies: false
+      
+  - type: email
+    name: "Work Inbox"
+    identifier: "user@company.com"
+    config:
+      imap_server: "imap.company.com"
+      folder: "INBOX"
 ```
