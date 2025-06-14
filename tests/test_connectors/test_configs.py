@@ -3,6 +3,7 @@ Tests for connector configurations.
 """
 import pytest
 from pydantic import ValidationError
+
 from src.connectors.configs.base import BaseConnectorConfig
 from src.connectors.configs.rss import RSSConfig
 

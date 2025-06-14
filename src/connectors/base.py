@@ -4,7 +4,7 @@ Base connector abstract class implementing Template Method Pattern.
 import logging
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import AsyncIterator, Dict, Any, Optional
+from typing import Any, AsyncIterator, Dict, Optional
 
 import httpx
 
@@ -24,13 +24,16 @@ class BaseConnector(ABC):
         self.logger = logging.getLogger(f"{self.__class__.__name__}:{source.name}")
         
     @abstractmethod
-    async def fetch_raw_data(self, fetch_state: Optional[Dict[str, Any]] = None) -> AsyncIterator[Dict[str, Any]]:
+    async def fetch_raw_data(
+        self, fetch_state: Optional[Dict[str, Any]] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
         """
         Yield raw data items from the source.
         
         Args:
             fetch_state: Previous fetch state for incremental fetching
-                        (e.g., {'last_seen_id': 'xyz', 'last_fetch_timestamp': '2024-01-01T00:00:00Z'})
+                        (e.g., {'last_seen_id': 'xyz',
+                         'last_fetch_timestamp': '2024-01-01T00:00:00Z'})
         """
         pass
         

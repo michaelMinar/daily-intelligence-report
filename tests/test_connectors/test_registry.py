@@ -2,7 +2,8 @@
 Tests for connector registry.
 """
 import pytest
-from src.connectors import get_connector_class, register_connector, CONNECTOR_REGISTRY
+
+from src.connectors import CONNECTOR_REGISTRY, get_connector_class, register_connector
 from src.connectors.base import BaseConnector
 from src.models.source import SourceType
 

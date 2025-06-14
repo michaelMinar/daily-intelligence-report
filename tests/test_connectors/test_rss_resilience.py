@@ -1,15 +1,15 @@
 """
 Tests for RSS connector resilience features.
 """
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import AsyncMock, Mock
 
 import httpx
+import pytest
 
+from src.connectors.exceptions import ParseError
 from src.connectors.rss import RSSConnector
-from src.connectors.exceptions import NetworkError, ParseError
-from src.models.source import Source, SourceType
 from src.database import Database
+from src.models.source import Source, SourceType
 
 
 @pytest.fixture
@@ -88,7 +88,9 @@ class TestRSSConnectorResilience:
         
         # Create mock responses
         error_response = Mock(status_code=503)
-        error = httpx.HTTPStatusError("Service unavailable", request=Mock(), response=error_response)
+        error = httpx.HTTPStatusError(
+            "Service unavailable", request=Mock(), response=error_response
+        )
         
         success_response = Mock(
             text="<rss><channel><title>Test</title></channel></rss>",

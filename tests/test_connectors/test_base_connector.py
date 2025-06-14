@@ -1,17 +1,16 @@
 """
 Tests for base connector functionality.
 """
-import pytest
-from unittest.mock import Mock, AsyncMock, patch
-from datetime import datetime
-from typing import AsyncIterator, Dict, Any, Optional
+from typing import Any, AsyncIterator, Dict, Optional
+from unittest.mock import AsyncMock, Mock
 
 import httpx
+import pytest
 
 from src.connectors.base import BaseConnector
+from src.database import Database
 from src.models.post import Post
 from src.models.source import Source, SourceType
-from src.database import Database
 
 
 class MockConnector(BaseConnector):
@@ -22,7 +21,9 @@ class MockConnector(BaseConnector):
         self.raw_data_items = []
         self.normalize_responses = {}
     
-    async def fetch_raw_data(self, fetch_state: Optional[Dict[str, Any]] = None) -> AsyncIterator[Dict[str, Any]]:
+    async def fetch_raw_data(
+        self, fetch_state: Optional[Dict[str, Any]] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
         """Yield test data."""
         for item in self.raw_data_items:
             yield item

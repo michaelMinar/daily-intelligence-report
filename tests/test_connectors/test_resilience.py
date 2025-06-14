@@ -8,10 +8,10 @@ import pytest
 
 from src.connectors.exceptions import NetworkError, RateLimitError
 from src.connectors.resilience import (
-    network_retry,
-    rate_limit_retry,
     CircuitBreaker,
     get_retry_after,
+    network_retry,
+    rate_limit_retry,
 )
 
 
@@ -120,15 +120,15 @@ class TestCircuitBreaker:
         mock_func = Mock(side_effect=Exception("Error"))
         
         # First 3 failures should pass through
-        for i in range(3):
-            with pytest.raises(Exception):
+        for _ in range(3):
+            with pytest.raises(Exception, match="Error"):
                 cb.call(mock_func)
         
         assert cb.state == CircuitBreaker.OPEN
         assert cb.failure_count == 3
         
         # Next call should fail immediately without calling function
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Circuit breaker is OPEN") as exc_info:
             cb.call(mock_func)
         
         assert "Circuit breaker is OPEN" in str(exc_info.value)
@@ -142,7 +142,7 @@ class TestCircuitBreaker:
         
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="Error"):
                 cb.call(mock_func)
         
         assert cb.state == CircuitBreaker.OPEN
@@ -151,7 +151,7 @@ class TestCircuitBreaker:
         time.sleep(1.1)
         
         # Next call should attempt function (half-open state)
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Error"):
             cb.call(mock_func)
         
         # Function should have been called again
@@ -163,7 +163,7 @@ class TestCircuitBreaker:
         
         # Add some failures
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="Error"):
                 cb.call(Mock(side_effect=Exception("Error")))
         
         assert cb.failure_count == 2
@@ -189,13 +189,13 @@ class TestCircuitBreaker:
         assert test_func("hello") == "hello"
         
         # Trigger failures
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Error"):
             test_func("error")
-        with pytest.raises(Exception):
+        with pytest.raises(Exception, match="Error"):
             test_func("error")
         
         # Circuit should be open
-        with pytest.raises(Exception) as exc_info:
+        with pytest.raises(Exception, match="Circuit breaker is OPEN") as exc_info:
             test_func("hello")
         
         assert "Circuit breaker is OPEN" in str(exc_info.value)
@@ -222,7 +222,7 @@ class TestCircuitBreaker:
         
         # Open the circuit
         for _ in range(2):
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="Error"):
                 cb.call(Mock(side_effect=Exception("Error")))
         
         assert cb.state == CircuitBreaker.OPEN
@@ -243,7 +243,7 @@ class TestCircuitBreaker:
         
         # Open the circuit
         for _ in range(5):  # Default threshold is 5
-            with pytest.raises(Exception):
+            with pytest.raises(Exception, match="Error"):
                 cb.call(Mock(side_effect=Exception("Error")))
         
         assert not cb.is_closed

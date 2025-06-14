@@ -1,18 +1,15 @@
 """
 Tests for RSS connector.
 """
-import pytest
-from datetime import datetime
-from unittest.mock import Mock, AsyncMock, patch
 from time import struct_time
+from unittest.mock import AsyncMock, Mock
 
 import httpx
+import pytest
 
 from src.connectors.rss import RSSConnector
-from src.models.source import Source, SourceType
-from src.models.post import Post
 from src.database import Database
-
+from src.models.source import Source, SourceType
 
 # Sample RSS feed for testing
 SAMPLE_RSS_FEED = """<?xml version="1.0" encoding="UTF-8"?>
@@ -143,7 +140,9 @@ class TestRSSConnector:
         assert len(items) == 1
     
     @pytest.mark.asyncio
-    async def test_fetch_raw_data_with_filter_keywords(self, mock_source, mock_db, mock_http_client):
+    async def test_fetch_raw_data_with_filter_keywords(
+        self, mock_source, mock_db, mock_http_client
+    ):
         """Test keyword filtering."""
         mock_source.config = {
             'filter_keywords': ['second'],
@@ -160,7 +159,9 @@ class TestRSSConnector:
         assert items[0]['entry']['title'] == 'Second Post'
     
     @pytest.mark.asyncio
-    async def test_fetch_raw_data_with_exclude_keywords(self, mock_source, mock_db, mock_http_client):
+    async def test_fetch_raw_data_with_exclude_keywords(
+        self, mock_source, mock_db, mock_http_client
+    ):
         """Test exclude keyword filtering."""
         mock_source.config = {
             'exclude_keywords': ['first'],
@@ -348,7 +349,7 @@ class TestRSSConnectorRegistration:
     
     def test_rss_connector_can_be_registered(self):
         """Test that RSSConnector can be registered and retrieved."""
-        from src.connectors import register_connector, get_connector_class, CONNECTOR_REGISTRY
+        from src.connectors import CONNECTOR_REGISTRY, get_connector_class, register_connector
         
         # Save current state
         original_registry = CONNECTOR_REGISTRY.copy()

@@ -1,22 +1,20 @@
 """
 Resilience patterns for connectors including retry logic and circuit breakers.
 """
-import time
 import logging
-from typing import Callable, Any, Optional, TypeVar, cast
+import time
 from functools import wraps
+from typing import Any, Callable, Optional, TypeVar, cast
 
 from tenacity import (
+    RetryCallState,
     retry,
+    retry_if_exception_type,
     stop_after_attempt,
     wait_exponential,
-    retry_if_exception_type,
-    wait_fixed,
-    RetryCallState,
 )
 
 from src.connectors.exceptions import NetworkError, RateLimitError
-
 
 logger = logging.getLogger(__name__)
 

@@ -1,8 +1,9 @@
 """
 Database interface for connectors.
 """
-from typing import List, Optional, Dict, Any
 from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
+
 from src.models.post import Post
 from src.models.source import Source
 

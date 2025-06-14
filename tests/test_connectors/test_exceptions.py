@@ -1,13 +1,12 @@
 """
 Tests for connector exceptions.
 """
-import pytest
 from src.connectors.exceptions import (
-    ConnectorError,
-    RateLimitError,
     AuthenticationError,
+    ConnectorError,
     NetworkError,
-    ParseError
+    ParseError,
+    RateLimitError,
 )
 
 

@@ -1,20 +1,20 @@
 """
 RSS/Atom feed connector implementation.
 """
-import feedparser
 from datetime import datetime
-from typing import AsyncIterator, Dict, Any, Optional
 from time import mktime
+from typing import Any, AsyncIterator, Dict, Optional
 
+import feedparser
 import httpx
 
+from src.connectors import register_connector
 from src.connectors.base import BaseConnector
 from src.connectors.configs.rss import RSSConfig
 from src.connectors.exceptions import NetworkError, ParseError
 from src.connectors.resilience import network_retry
 from src.models.post import Post
 from src.models.source import SourceType
-from src.connectors import register_connector
 
 
 class RSSConnector(BaseConnector):
@@ -33,17 +33,21 @@ class RSSConnector(BaseConnector):
             response.raise_for_status()
             return response.text
         except httpx.NetworkError as e:
-            raise NetworkError(f"Network error fetching {url}: {e}")
+            raise NetworkError(f"Network error fetching {url}: {e}") from e
         except httpx.TimeoutException as e:
-            raise NetworkError(f"Timeout fetching {url}: {e}")
+            raise NetworkError(f"Timeout fetching {url}: {e}") from e
         except httpx.HTTPStatusError as e:
             # Don't retry on 4xx errors (client errors)
             if 400 <= e.response.status_code < 500:
                 raise
             # Retry on 5xx errors (server errors)
-            raise NetworkError(f"HTTP {e.response.status_code} error fetching {url}")
+            raise NetworkError(
+                f"HTTP {e.response.status_code} error fetching {url}"
+            ) from e
     
-    async def fetch_raw_data(self, fetch_state: Optional[Dict[str, Any]] = None) -> AsyncIterator[Dict[str, Any]]:
+    async def fetch_raw_data(
+        self, fetch_state: Optional[Dict[str, Any]] = None
+    ) -> AsyncIterator[Dict[str, Any]]:
         """Fetch and parse RSS feed entries."""
         config: RSSConfig = self.source.typed_config
         

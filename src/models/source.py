@@ -2,7 +2,7 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional, Type
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -22,7 +22,10 @@ class Source(BaseModel):
 
     id: Optional[int] = None
     type: SourceType
-    identifier: str = Field(..., description="Generic identifier: URL for RSS/YouTube, handle for Twitter, email for IMAP")
+    identifier: str = Field(
+        ...,
+        description="Generic identifier: URL for RSS/YouTube, handle for Twitter, email for IMAP",
+    )
     name: str = Field(..., description="Human-readable name for the source")
     config: Optional[Dict[str, Any]] = Field(
         default=None, description="Source-specific configuration"

@@ -1,10 +1,11 @@
 """
 Connector module for ingesting content from various sources.
 """
-from typing import Type, Dict
-from src.models.source import SourceType
-from .base import BaseConnector
+from typing import Dict, Type
 
+from src.models.source import SourceType
+
+from .base import BaseConnector
 
 # Registry will be populated as connectors are implemented
 CONNECTOR_REGISTRY: Dict[SourceType, Type[BaseConnector]] = {}
