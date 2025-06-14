@@ -3,8 +3,9 @@ Base connector abstract class implementing Template Method Pattern.
 """
 import logging
 from abc import ABC, abstractmethod
+from collections.abc import AsyncGenerator
 from datetime import datetime
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, Dict, Optional
 
 import httpx
 
@@ -24,9 +25,9 @@ class BaseConnector(ABC):
         self.logger = logging.getLogger(f"{self.__class__.__name__}:{source.name}")
         
     @abstractmethod
-    async def fetch_raw_data(
+    def fetch_raw_data(
         self, fetch_state: Optional[Dict[str, Any]] = None
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """
         Yield raw data items from the source.
         
@@ -77,6 +78,8 @@ class BaseConnector(ABC):
         
         try:
             # 1. Get previous fetch state
+            if self.source.id is None:
+                raise ValueError("Source ID cannot be None")
             fetch_state = await self.db.get_source_fetch_state(self.source.id)
             
             # 2. Fetch raw data with incremental support
@@ -91,6 +94,8 @@ class BaseConnector(ABC):
                         continue
                         
                     # 4. Set source_id and generate composite hash
+                    if self.source.id is None:
+                        raise ValueError("Source ID cannot be None")
                     post.source_id = self.source.id
                     post.content_hash = Post.generate_content_hash(
                         post.source_id, post.content, post.url, post.source_guid
@@ -111,7 +116,7 @@ class BaseConnector(ABC):
                     stats['error'] += 1
                     
             # 7. Update fetch state if we processed any items
-            if last_processed_post:
+            if last_processed_post and self.source.id is not None:
                 new_state = self.extract_fetch_state(last_processed_post)
                 await self.db.update_source_fetch_state(self.source.id, new_state)
                 

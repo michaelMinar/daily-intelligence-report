@@ -2,7 +2,10 @@
 
 from datetime import datetime
 from enum import Enum
-from typing import Any, Dict, Optional
+from typing import TYPE_CHECKING, Any, Dict, Optional
+
+if TYPE_CHECKING:
+    from src.connectors.configs.base import BaseConnectorConfig
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,7 +38,7 @@ class Source(BaseModel):
     active: bool = Field(default=True, description="Whether the source is active")
     
     @property
-    def typed_config(self):
+    def typed_config(self) -> 'BaseConnectorConfig':
         """Return strongly-typed configuration object."""
         from src.connectors.configs.base import BaseConnectorConfig
         from src.connectors.configs.rss import RSSConfig

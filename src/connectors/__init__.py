@@ -18,6 +18,6 @@ def get_connector_class(source_type: SourceType) -> Type[BaseConnector]:
     return CONNECTOR_REGISTRY[source_type]
 
 
-def register_connector(source_type: SourceType, connector_class: Type[BaseConnector]):
+def register_connector(source_type: SourceType, connector_class: Type[BaseConnector]) -> None:
     """Register a connector class for a source type."""
     CONNECTOR_REGISTRY[source_type] = connector_class

@@ -37,7 +37,8 @@ network_retry = retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=4, max=10),
     before_sleep=lambda retry_state: logger.warning(
-        f"Network error, retrying in {retry_state.next_action.sleep} seconds..."
+        f"Network error, retrying in "
+        f"{retry_state.next_action.sleep if retry_state.next_action else 0} seconds..."
     )
 )
 

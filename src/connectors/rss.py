@@ -1,11 +1,12 @@
 """
 RSS/Atom feed connector implementation.
 """
+from collections.abc import AsyncGenerator
 from datetime import datetime
 from time import mktime
-from typing import Any, AsyncIterator, Dict, Optional
+from typing import Any, Dict, Optional, cast
 
-import feedparser
+import feedparser  # type: ignore[import-untyped]
 import httpx
 
 from src.connectors import register_connector
@@ -47,9 +48,9 @@ class RSSConnector(BaseConnector):
     
     async def fetch_raw_data(
         self, fetch_state: Optional[Dict[str, Any]] = None
-    ) -> AsyncIterator[Dict[str, Any]]:
+    ) -> AsyncGenerator[Dict[str, Any], None]:
         """Fetch and parse RSS feed entries."""
-        config: RSSConfig = self.source.typed_config
+        config = cast(RSSConfig, self.source.typed_config)
         
         # Fetch feed with retry logic
         feed_content = await self._fetch_feed(self.source.identifier, config)
@@ -162,6 +163,8 @@ class RSSConnector(BaseConnector):
                 metadata['tags'] = [tag.get('term', '') for tag in entry['tags'] if tag.get('term')]
             
             # Create Post instance
+            if self.source.id is None:
+                raise ValueError("Source ID cannot be None")
             return Post(
                 source_id=self.source.id,  # Will be overridden in base.run()
                 title=title,
