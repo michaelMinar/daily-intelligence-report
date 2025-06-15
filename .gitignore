@@ -62,3 +62,6 @@ logs/
 *.db
 *.sqlite
 *.sqlite3
+
+# GitHub comment parser output
+.github/pr_comments_*.json
