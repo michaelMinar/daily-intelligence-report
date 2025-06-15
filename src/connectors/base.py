@@ -121,7 +121,7 @@ class BaseConnector(ABC):
                 await self.db.update_source_fetch_state(self.source.id, new_state)
                 
         except Exception as e:
-            self.logger.error(f"Fatal error in connector run: {e}")
+            self.logger.error(f"Fatal error in connector run: {type(e).__name__} - {e}")
             raise
             
         return stats

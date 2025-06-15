@@ -47,7 +47,9 @@ class TestRSSConnectorResilience:
         responses = [
             httpx.NetworkError("Network error 1"),
             httpx.NetworkError("Network error 2"),
-            Mock(text="<rss><channel><title>Test</title></channel></rss>", 
+            Mock(text="""<rss><channel><title>Test</title>
+                        <item><title>Test Post</title><link>http://example.com</link></item>
+                        </channel></rss>""", 
                  raise_for_status=Mock())
         ]
         mock_http_client.get = AsyncMock(side_effect=responses)
@@ -61,6 +63,9 @@ class TestRSSConnectorResilience:
         
         # Should have called get 3 times
         assert mock_http_client.get.call_count == 3
+        # Verify that the data fetched after retry is correct
+        assert len(items) == 1
+        assert items[0]['entry']['title'] == 'Test Post'
     
     @pytest.mark.asyncio
     async def test_retry_on_timeout(self, mock_source, mock_db):

@@ -18,10 +18,10 @@ import argparse
 import json
 import subprocess
 import sys
-from pathlib import Path
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 
 @dataclass
@@ -71,7 +71,9 @@ class GitHubCommentParser:
             "gh", "api", f"repos/{self.repo_name}/pulls/{pr_number}/commits", "--paginate"
         ])
     
-    def get_preceding_commit(self, commits: List[Dict], comment_timestamp: str) -> tuple[Optional[str], Optional[str]]:
+    def get_preceding_commit(
+        self, commits: List[Dict], comment_timestamp: str
+    ) -> tuple[Optional[str], Optional[str]]:
         """Find the commit that directly preceded a comment based on timestamp."""
         try:
             comment_dt = datetime.fromisoformat(comment_timestamp.replace('Z', '+00:00'))
@@ -79,9 +81,16 @@ class GitHubCommentParser:
             # Find the most recent commit before the comment timestamp
             preceding_commit = None
             for commit in commits:
-                commit_dt = datetime.fromisoformat(commit['commit']['author']['date'].replace('Z', '+00:00'))
+                commit_dt = datetime.fromisoformat(
+                    commit['commit']['author']['date'].replace('Z', '+00:00')
+                )
                 if commit_dt <= comment_dt:
-                    if not preceding_commit or commit_dt > datetime.fromisoformat(preceding_commit['commit']['author']['date'].replace('Z', '+00:00')):
+                    if (
+                        not preceding_commit or 
+                        commit_dt > datetime.fromisoformat(
+                            preceding_commit['commit']['author']['date'].replace('Z', '+00:00')
+                        )
+                    ):
                         preceding_commit = commit
             
             if preceding_commit:
@@ -221,12 +230,23 @@ def main():
     """Main entry point."""
     parser = argparse.ArgumentParser(description="Parse GitHub PR comments with reaction filtering")
     parser.add_argument("--pr", type=int, required=True, help="PR number")
-    parser.add_argument("--repo", default="michaelMinar/daily-intelligence-report", help="Repository (owner/name)")
+    parser.add_argument(
+        "--repo", 
+        default="michaelMinar/daily-intelligence-report", 
+        help="Repository (owner/name)"
+    )
     parser.add_argument("--reaction", help="Filter by specific reaction type (e.g., +1, -1, heart)")
     parser.add_argument("--user", help="Filter reactions by specific user")
     parser.add_argument("--bot", help="Filter comments by specific bot user")
-    parser.add_argument("--output", help="Output file path (default: .github/pr_comments_data.json)")
-    parser.add_argument("--all", action="store_true", help="Include all comments regardless of reactions")
+    parser.add_argument(
+        "--output", 
+        help="Output file path (default: .github/pr_comments_data.json)"
+    )
+    parser.add_argument(
+        "--all", 
+        action="store_true", 
+        help="Include all comments regardless of reactions"
+    )
     
     args = parser.parse_args()
     
@@ -274,11 +294,17 @@ def main():
     # Print summary (also sorted by timestamp, newest first)
     if filtered_comments:
         sorted_for_display = sorted(filtered_comments, key=lambda c: c.timestamp, reverse=True)
-        print(f"\nSummary of comments (newest first):")
+        print("\nSummary of comments (newest first):")
         for comment in sorted_for_display[:10]:  # Show only first 10 for brevity
-            reactions_str = ", ".join([f"{k}: {len(v)}" for k, v in comment.reactions.items()]) if comment.reactions else "none"
+            reactions_str = (
+                ", ".join([f"{k}: {len(v)}" for k, v in comment.reactions.items()]) 
+                if comment.reactions else "none"
+            )
             file_info = f" ({comment.file_path}:{comment.line_number})" if comment.file_path else ""
-            commit_info = f" [commit: {comment.preceding_commit[:8]}]" if comment.preceding_commit else ""
+            commit_info = (
+                f" [commit: {comment.preceding_commit[:8]}]" 
+                if comment.preceding_commit else ""
+            )
             print(f"  - {comment.timestamp[:19]} | {comment.reviewer}{file_info}{commit_info}")
             print(f"    Reactions: {reactions_str}")
             print(f"    {comment.comment_body[:100]}...")

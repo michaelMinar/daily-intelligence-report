@@ -54,4 +54,8 @@ class TestConnectorRegistry:
         # This test ensures registry is properly isolated
         initial_count = len(CONNECTOR_REGISTRY)
         register_connector(SourceType.PODCAST, MockRSSConnector)
-        assert len(CONNECTOR_REGISTRY) >= initial_count
+        assert len(CONNECTOR_REGISTRY) > initial_count
+        
+        # Clean up the registered connector to avoid affecting other tests
+        if SourceType.PODCAST in CONNECTOR_REGISTRY:
+            del CONNECTOR_REGISTRY[SourceType.PODCAST]

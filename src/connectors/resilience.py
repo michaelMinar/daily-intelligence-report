@@ -122,6 +122,7 @@ class CircuitBreaker:
         if self.state == self.OPEN:
             if self._should_attempt_reset():
                 self.state = self.HALF_OPEN
+                logger.info("Circuit breaker transitioning to HALF_OPEN state for recovery attempt")
             else:
                 raise Exception(f"Circuit breaker is OPEN (failures: {self.failure_count})")
         
@@ -131,6 +132,12 @@ class CircuitBreaker:
             return result
         except self.expected_exception as e:
             self._on_failure()
+            raise e
+        except Exception as e:
+            # For unexpected exceptions, ensure state is properly handled
+            if self.state == self.HALF_OPEN:
+                # Treat unexpected exceptions as failures during recovery
+                self._on_failure()
             raise e
     
     def _should_attempt_reset(self) -> bool:

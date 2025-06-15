@@ -1,7 +1,6 @@
 """
 Tests for connector resilience features.
 """
-import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -147,12 +146,20 @@ class TestCircuitBreaker:
         
         assert cb.state == CircuitBreaker.OPEN
         
-        # Wait for recovery timeout
-        time.sleep(1.1)
-        
-        # Next call should attempt function (half-open state)
-        with pytest.raises(Exception, match="Error"):
-            cb.call(mock_func)
+        # Mock time.sleep to avoid actual waiting and control timing
+        with patch('time.time') as mock_time:
+            # Set initial time
+            mock_time.return_value = 1000.0
+            
+            # Record failure time
+            cb.last_failure_time = 1000.0
+            
+            # Advance time past recovery timeout
+            mock_time.return_value = 1002.0  # 2 seconds later
+            
+            # Next call should attempt function (half-open state)
+            with pytest.raises(Exception, match="Error"):
+                cb.call(mock_func)
         
         # Function should have been called again
         assert mock_func.call_count == 3

@@ -25,10 +25,16 @@ class RSSConnector(BaseConnector):
     async def _fetch_feed(self, url: str, config: RSSConfig) -> str:
         """Fetch feed content with retry logic."""
         try:
+            # Ensure User-Agent header is present (some feeds block requests without it)
+            headers = {
+                'User-Agent': 'Daily Intelligence Report RSS Reader/1.0',
+                **(config.custom_headers or {})
+            }
+            
             response = await self.http_client.get(
                 url,
                 timeout=config.timeout_seconds,
-                headers=config.custom_headers or {},
+                headers=headers,
                 follow_redirects=True
             )
             response.raise_for_status()
@@ -62,9 +68,13 @@ class RSSConnector(BaseConnector):
         if feed.bozo and hasattr(feed, 'bozo_exception'):
             # Check if it's a serious error (no entries could be parsed)
             if not feed.entries:
-                raise ParseError(f"Failed to parse feed: {feed.bozo_exception}")
+                raise ParseError(
+                    f"Failed to parse feed from {self.source.identifier}: {feed.bozo_exception}"
+                )
             # Otherwise just log a warning and continue
-            self.logger.warning(f"Feed parsing warning: {feed.bozo_exception}")
+            self.logger.warning(
+                f"Feed parsing warning for {self.source.identifier}: {feed.bozo_exception}"
+            )
         
         # Handle incremental fetching
         last_seen_guid = fetch_state.get('last_seen_id') if fetch_state else None
@@ -123,11 +133,13 @@ class RSSConnector(BaseConnector):
             content = ""
             if 'content' in entry and entry['content']:
                 # content is a list of dicts
-                content = entry['content'][0].get('value', '')
-            elif 'summary' in entry:
+                content = entry['content'][0].get('value', '').strip()
+            
+            # If content is empty, fall back to summary
+            if not content and 'summary' in entry:
                 content = entry['summary']
             
-            # Fallback to title if no content
+            # Final fallback to title if no content
             if not content:
                 content = title
             

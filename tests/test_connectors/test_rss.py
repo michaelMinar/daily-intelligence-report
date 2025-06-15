@@ -110,7 +110,7 @@ class TestRSSConnector:
         mock_http_client.get.assert_called_once_with(
             "https://example.com/feed.xml",
             timeout=30,
-            headers={},
+            headers={'User-Agent': 'Daily Intelligence Report RSS Reader/1.0'},
             follow_redirects=True
         )
     
@@ -178,6 +178,42 @@ class TestRSSConnector:
         assert items[0]['entry']['title'] == 'Second Post'
     
     @pytest.mark.asyncio
+    async def test_fetch_raw_data_filter_keywords_no_matches(
+        self, mock_source, mock_db, mock_http_client
+    ):
+        """Test filter_keywords when no items match any keywords."""
+        mock_source.config = {
+            'filter_keywords': ['nonexistent', 'missing'],
+            'max_items_per_fetch': 10
+        }
+        connector = RSSConnector(mock_source, mock_db, mock_http_client)
+        
+        items = []
+        async for item in connector.fetch_raw_data():
+            items.append(item)
+        
+        # Should return no items since none match the filter keywords
+        assert len(items) == 0
+    
+    @pytest.mark.asyncio
+    async def test_fetch_raw_data_exclude_keywords_all_filtered(
+        self, mock_source, mock_db, mock_http_client
+    ):
+        """Test exclude_keywords when all items match excluded keywords."""
+        mock_source.config = {
+            'exclude_keywords': ['post'],  # Both posts have 'post' in title
+            'max_items_per_fetch': 10
+        }
+        connector = RSSConnector(mock_source, mock_db, mock_http_client)
+        
+        items = []
+        async for item in connector.fetch_raw_data():
+            items.append(item)
+        
+        # Should return no items since all are excluded
+        assert len(items) == 0
+    
+    @pytest.mark.asyncio
     async def test_fetch_raw_data_http_error(self, rss_connector, mock_http_client):
         """Test handling of HTTP errors."""
         mock_http_client.get.side_effect = httpx.HTTPStatusError(
@@ -236,6 +272,25 @@ class TestRSSConnector:
         
         assert post is not None
         assert post.content == 'Full content here'
+    
+    def test_normalize_to_post_empty_content(self, rss_connector):
+        """Test normalization with empty content falls back to summary."""
+        entry = {
+            'title': 'Test Post',
+            'summary': 'Fallback summary',
+            'content': [{'value': ''}]  # Empty content
+        }
+        
+        raw_data = {
+            'entry': entry,
+            'feed_info': {}
+        }
+        
+        post = rss_connector.normalize_to_post(raw_data)
+        
+        assert post is not None
+        # Should fall back to summary when content is empty
+        assert post.content == 'Fallback summary'
     
     def test_normalize_to_post_no_title(self, rss_connector):
         """Test normalization with missing title."""
